@@ -13,7 +13,7 @@ golden waveforms.
 - **Package name:** `acm-fit` (release tag `v0.1.0-lascas-2026`)
 - **Upstream PTM models:** [spice_model_collections](https://github.com/SJTU-YONGFU-RESEARCH-GRP/spice_model_collections) (git submodule)
 - **Commercial PDKs:** sky130 and GF180MCU (install locally; not redistributed)
-- **Entry points:** `scripts/run_all.sh`, `scripts/run_golden_pipeline.py`, `scripts/run_eval_suite.py`
+- **Entry points:** `scripts/run_all.sh`, `scripts/run_golden_pipeline.sh`, `scripts/run_eval_suite.sh`
 - **License:** CC BY 4.0 for this package (see [LICENSE](LICENSE)); ACM-5 Verilog-A under UFSC terms in `models/acm5/`
 
 ## Table of contents
@@ -245,13 +245,13 @@ You do **not** need a PDK install to fit against your own reference curves. Full
 
 ```bash
 # 1. Scaffold meta.json (lists expected CSV filenames)
-python3 scripts/scaffold_golden_target.py \
+bash scripts/scaffold_golden_target.sh \
   --out data/golden/custom/my_device \
   --pdk my_device --vdd 1.8 --width-m 3e-6 --length-m 180e-9 \
   --vds 0.09,0.9,1.8
 
 # 2. Add your vg,id_ref CSVs, then validate
-PYTHONPATH=src python3 scripts/validate_golden.py data/golden/custom/my_device
+bash scripts/validate_golden.sh data/golden/custom/my_device
 
 # 3. Point config/golden_suite_custom.json at data_only targets (see example)
 cp config/golden_suite_custom.example.json config/golden_suite_custom.json
@@ -367,11 +367,10 @@ Options:
   --force             Re-run cached eval jobs
 ```
 
-### `scripts/run_golden_pipeline.py`
+### `scripts/run_golden_pipeline.sh`
 
 ```bash
-export PYTHONPATH=src
-python3 scripts/run_golden_pipeline.py \
+bash scripts/run_golden_pipeline.sh \
   --config config/golden_suite_commercial.json \
   --results-dir results/commercial \
   --iterations 25 \
@@ -379,13 +378,14 @@ python3 scripts/run_golden_pipeline.py \
   --simulators ngspice
 ```
 
+Equivalent: `python3 -m acm.cli.pipeline` (with `PYTHONPATH=src`).
+
 Flags: `--skip-golden`, `--skip-fit`, `--skip-predict`, `--openvaf-binary work/openvaf-r`.
 
-### `scripts/run_eval_suite.py`
+### `scripts/run_eval_suite.sh`
 
 ```bash
-export PYTHONPATH=src
-python3 scripts/run_eval_suite.py \
+bash scripts/run_eval_suite.sh \
   --config config/eval_suite.json \
   --results-dir results/commercial \
   --models acm5 \
@@ -401,13 +401,13 @@ python3 scripts/run_eval_suite.py \
 | `scripts/setup_env.sh` | Fetch OpenVAF binary into `work/` |
 | `scripts/load_pdk_env.sh` | Export env vars from `pdk_env.local.json` |
 | `scripts/import_golden_data.sh` | Copy golden dirs → `results/` (`--from` / `--to` for custom paths) |
-| `scripts/convert_csv_golden.py` | Import generic `vg`/`id` CSVs into golden layout |
-| `scripts/scaffold_golden_target.py` | Create `meta.json` for a new user target |
-| `scripts/validate_golden.py` | Validate `meta.json` + CSV layout |
+| `scripts/convert_csv_golden.sh` | Import generic `vg`/`id` CSVs into golden layout |
+| `scripts/scaffold_golden_target.sh` | Create `meta.json` for a new user target |
+| `scripts/validate_golden.sh` | Validate `meta.json` + CSV layout |
 | `scripts/export_golden_data.sh` | Copy `results/<lane>/golden/` → `data/golden/` |
 | `scripts/clean.sh` | Remove `results/*/` and `work/` |
-| `scripts/sync_src.sh` | Sync Python `src/` from monorepo |
-| `scripts/plot_paper_figures.py` | Regenerate `figures/` |
+| `scripts/plot_paper_figures.sh` | Regenerate `figures/` |
+| `scripts/write_reports.sh` | Regenerate `SUMMARY.md` / `REPORT.md` from artifacts |
 
 ## Project layout
 
@@ -416,9 +416,9 @@ python3 scripts/run_eval_suite.py \
 ├── config/                    # Suite policies and PDK env template
 ├── data/golden/               # Frozen BSIM Id–Vg (committed)
 ├── figures/                   # Paper figures (committed)
+├── src/acm/                   # Python package (golden, eval, opt, report, cli)
 ├── models/acm5/               # UFSC ACM-5 Verilog-A + OSDI
-├── scripts/                   # Shell and Python drivers
-├── src/                       # Python pipeline (acm_golden, acm_opt, acm_eval, acm_report)
+├── scripts/                   # Shell drivers → python3 -m acm.cli.*
 ├── vendor/                    # spice_model_collections (git submodule)
 ├── work/                      # OpenVAF cache (gitignored)
 ├── results/                   # Generated outputs (gitignored)
@@ -434,16 +434,6 @@ python3 scripts/run_eval_suite.py \
 1. Add VA/OSDI under `models/<id>/`
 2. Add a tier entry to `config/acm_tier_spec.json` (`module`, `va`, `osdi`, `dc_fit_params`)
 3. List the model id in `fit_models` in the golden suite JSON
-
-## Sync from monorepo
-
-Python sources are copied from the workspace `src/` tree:
-
-```bash
-bash scripts/sync_src.sh
-```
-
-Run this after changing `src/` in the parent monorepo so the release stays aligned.
 
 ## License
 

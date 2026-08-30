@@ -7,15 +7,6 @@ RELEASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RESULTS_DIR="${RELEASE_ROOT}/results/${1:-commercial}"
 MODEL="${2:-acm5}"
 
-export PYTHONPATH="${RELEASE_ROOT}/src:${PYTHONPATH:-}"
-python3 - "${RESULTS_DIR}" "${MODEL}" <<'PY'
-import sys
-from pathlib import Path
-from acm_report import write_corner_report
-
-path = write_corner_report(
-    results_dir=Path(sys.argv[1]),
-    model=sys.argv[2],
-)
-print(path)
-PY
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/_acm_env.sh"
+acm_cli corner --results-dir "${RESULTS_DIR}" --model "${MODEL}"

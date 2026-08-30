@@ -7,11 +7,11 @@ RELEASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/load_pdk_env.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/_acm_env.sh"
 bash "${SCRIPT_DIR}/setup_env.sh"
 
-export PYTHONPATH="${RELEASE_ROOT}/src:${PYTHONPATH:-}"
-
-python3 "${SCRIPT_DIR}/run_golden_pipeline.py" \
+bash "${SCRIPT_DIR}/run_golden_pipeline.sh" \
     --config "${RELEASE_ROOT}/config/golden_suite_smoke.json" \
     --results-dir "${RELEASE_ROOT}/results/smoke" \
     --openvaf-binary "${RELEASE_ROOT}/work/openvaf-r" \

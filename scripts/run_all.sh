@@ -79,14 +79,14 @@ done
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/load_pdk_env.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/_acm_env.sh"
 bash "${SCRIPT_DIR}/setup_env.sh"
 
 GOLDEN_FLAGS=()
 [[ "${SKIP_GOLDEN}" -eq 1 ]] && GOLDEN_FLAGS+=(--skip-golden)
 [[ "${SKIP_FIT}" -eq 1 ]] && GOLDEN_FLAGS+=(--skip-fit)
 [[ "${SKIP_PREDICT}" -eq 1 ]] && GOLDEN_FLAGS+=(--skip-predict)
-
-export PYTHONPATH="${RELEASE_ROOT}/src:${PYTHONPATH:-}"
 
 read -r -a LANES <<< "$(resolve_lanes "${LANE_ARG}")"
 
@@ -124,7 +124,7 @@ for LANE in "${LANES[@]}"; do
         bash "${SCRIPT_DIR}/import_golden_data.sh" "${LANE}"
     fi
 
-    python3 "${SCRIPT_DIR}/run_golden_pipeline.py" \
+    bash "${SCRIPT_DIR}/run_golden_pipeline.sh" \
         --config "${CONFIG}" \
         --results-dir "${RELEASE_ROOT}/results/${RESULTS_LANE}" \
         --openvaf-binary "${RELEASE_ROOT}/work/openvaf-r" \
@@ -139,7 +139,7 @@ for LANE in "${LANES[@]}"; do
         echo "=== Eval (${LANE}): ACM vs BSIM (${EVAL_PDKS}) ==="
         FORCE_FLAG=()
         [[ "${FORCE}" -eq 1 ]] && FORCE_FLAG=(--force)
-        python3 "${SCRIPT_DIR}/run_eval_suite.py" \
+        bash "${SCRIPT_DIR}/run_eval_suite.sh" \
             --config "${EVAL_CONFIG}" \
             --results-dir "${RELEASE_ROOT}/results/${RESULTS_LANE}" \
             --models acm5 \

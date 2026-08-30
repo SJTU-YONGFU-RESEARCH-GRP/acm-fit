@@ -18,3 +18,14 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["acm*"]
+
+[project.scripts]
+acm-pipeline = "acm.cli.pipeline:main"
+acm-eval = "acm.cli.eval:main"
+acm-reports = "acm.cli.reports:main"
+acm-corner = "acm.cli.corner:main"
+acm-figures = "acm.cli.figures:main"
+acm-golden-validate = "acm.cli.golden_validate:main"
+acm-golden-scaffold = "acm.cli.golden_scaffold:main"
+acm-golden-convert = "acm.cli.golden_convert:main"
