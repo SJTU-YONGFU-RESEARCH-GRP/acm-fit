@@ -98,7 +98,7 @@ pip install -r requirements.txt
 If you have not cloned with submodules yet:
 
 ```bash
-git clone --recurse-submodules <acm-fit-repo-url>
+git clone --recurse-submodules https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit.git
 ```
 
 ### Configure PDK paths

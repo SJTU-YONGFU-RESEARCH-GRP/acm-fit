@@ -14,7 +14,7 @@ git submodule update --init --recursive
 Or clone with submodules in one step:
 
 ```bash
-git clone --recurse-submodules <acm-fit-repo-url>
+git clone --recurse-submodules https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit.git
 ```
 
 Set `SMC_ROOT=vendor/spice_model_collections` in `config/pdk_env.local.json`
