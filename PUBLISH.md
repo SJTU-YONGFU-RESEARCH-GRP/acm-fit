@@ -36,7 +36,7 @@ git push origin v0.1.0-lascas-2026
 
 | Path | Purpose |
 |------|---------|
-| `src/` | Python pipeline (sync from monorepo via `scripts/sync_src.sh`) |
+| `src/acm/` | Python package (`golden`, `eval`, `opt`, `report`, `cli`) |
 | `models/acm5/` | UFSC ACM-5 VA + prebuilt OSDI |
 | `config/` | Golden/eval suites, tier registry, `pdk_env.example.json` |
 | `data/golden/` | Frozen BSIM Id–Vg CSVs (commercial + PTM lanes) |

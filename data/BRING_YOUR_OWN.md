@@ -82,7 +82,7 @@ Options: `--golden-from <dir>`, `--config <json>`, `--iterations N`, `--skip-pre
 
 ```bash
 bash scripts/import_golden_data.sh --from data/golden/custom --to results/custom
-PYTHONPATH=src python3 scripts/run_golden_pipeline.py \
+bash scripts/run_golden_pipeline.sh \
   --config config/golden_suite_custom.json \
   --results-dir results/custom \
   --skip-golden --jobs 4
