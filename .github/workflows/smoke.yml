@@ -13,8 +13,21 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install ngspice
-        run: sudo apt-get update && sudo apt-get install -y ngspice
+      - name: Build ngspice 44 (OSDI 0.4)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex libfftw3-dev \
+            libx11-dev libxt-dev libreadline-dev
+          curl -sL https://github.com/ngspice/ngspice/archive/refs/tags/ngspice-44.2.tar.gz \
+            | tar xz
+          cd ngspice-ngspice-44.2
+          ./autogen.sh
+          ./configure --prefix=/usr/local --enable-ngshared --enable-xspice \
+            --enable-osdi --disable-debug
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+          ngspice --version | head -1
 
       - name: Python deps
         run: pip install -r requirements.txt

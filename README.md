@@ -77,7 +77,7 @@ Each target directory contains `meta.json` plus `idvg_vds_*.csv` files (`vg`, `i
 | Component | Version / notes |
 |-----------|-----------------|
 | Python | 3.9+ |
-| ngspice | On `PATH` (used for golden capture, fit, predict, eval) |
+| ngspice | **44+** on `PATH` (OSDI 0.4; Ubuntu apt `ngspice` is often too old) |
 | Python packages | `numpy`, `scipy`, `matplotlib`, `optuna` — see [requirements.txt](requirements.txt) |
 | OpenVAF | Downloaded automatically by `scripts/setup_env.sh` into `work/openvaf-r` |
 | sky130 + GF180MCU | Required for **commercial** golden capture and eval (not bundled) |

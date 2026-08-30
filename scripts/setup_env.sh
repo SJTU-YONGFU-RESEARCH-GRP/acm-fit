@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ###############################################################################
-# setup_env.sh — verify ngspice and compile ACM-5 OSDI with OpenVAF-Reloaded
+# setup_env.sh — verify ngspice OSDI support and compile ACM-5 OSDI with OpenVAF
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,12 +20,36 @@ ngspice --version 2>&1 | head -1
 
 _nmos_osdi="${ACM5_VA_DIR}/NMOS_ACM_2V0.osdi"
 _pmos_osdi="${ACM5_VA_DIR}/PMOS_ACM_2V0.osdi"
-if [[ -f "${_nmos_osdi}" && -f "${_pmos_osdi}" ]]; then
-    echo "Pre-built OSDI present in models/acm5/"
+
+_osdi_loads() {
+    local osdi="$1"
+    [[ -f "${osdi}" ]] || return 1
+    local probe="${WORK_DIR}/_osdi_probe.spice"
+    cat > "${probe}" <<EOF
+* osdiload probe
+.control
+pre_osdi ${osdi}
+quit
+.endc
+.end
+EOF
+    ngspice -b "${probe}" > "${WORK_DIR}/_osdi_probe.log" 2>&1
+    ! grep -qi "couldn't be loaded" "${WORK_DIR}/_osdi_probe.log"
+}
+
+_prebuilt_ok() {
+    [[ -f "${_nmos_osdi}" && -f "${_pmos_osdi}" ]] || return 1
+    _osdi_loads "${_nmos_osdi}" && _osdi_loads "${_pmos_osdi}"
+}
+
+if _prebuilt_ok; then
+    echo "Pre-built OSDI loads with this ngspice:"
     ls -lh "${ACM5_VA_DIR}"/*.osdi
     echo "Setup complete."
     exit 0
 fi
+
+echo "Pre-built OSDI missing or incompatible with ngspice; compiling with OpenVAF-Reloaded ..."
 
 OPENVAF_BIN=""
 if command -v openvaf-r &>/dev/null; then
@@ -54,17 +78,22 @@ if [[ -z "${OPENVAF_BIN}" ]]; then
     done
 fi
 
-if [[ -n "${OPENVAF_BIN}" ]]; then
-    echo "OpenVAF-Reloaded: ${OPENVAF_BIN}"
-    for va in "${ACM5_VA_DIR}/NMOS_ACM_2V0.va" "${ACM5_VA_DIR}/PMOS_ACM_2V0.va"; do
-        if ! "${OPENVAF_BIN}" "${va}"; then
-            echo "WARNING: OpenVAF compile failed for ${va}; ensure pre-built .osdi is present." >&2
-        fi
-    done
-else
-    echo "OpenVAF not available; ship pre-built .osdi under models/acm5/." >&2
+if [[ -z "${OPENVAF_BIN}" ]]; then
+    echo "ERROR: OpenVAF not available and pre-built OSDI is incompatible with ngspice." >&2
+    echo "Install ngspice >= 44 (OSDI 0.4) or provide compatible .osdi files." >&2
     exit 1
 fi
 
-ls -lh "${ACM5_VA_DIR}"/*.osdi 2>/dev/null || true
+echo "OpenVAF-Reloaded: ${OPENVAF_BIN}"
+for va in "${ACM5_VA_DIR}/NMOS_ACM_2V0.va" "${ACM5_VA_DIR}/PMOS_ACM_2V0.va"; do
+    (cd "${ACM5_VA_DIR}" && "${OPENVAF_BIN}" "$(basename "${va}")")
+done
+
+if ! _prebuilt_ok; then
+    echo "ERROR: OpenVAF compile finished but OSDI still fails ngspice load probe." >&2
+    cat "${WORK_DIR}/_osdi_probe.log" >&2 || true
+    exit 1
+fi
+
+ls -lh "${ACM5_VA_DIR}"/*.osdi
 echo "Setup complete."
