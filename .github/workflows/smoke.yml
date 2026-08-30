@@ -18,10 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex libfftw3-dev \
             libx11-dev libxt-dev libreadline-dev
-          curl -sL https://github.com/ngspice/ngspice/archive/refs/tags/ngspice-44.2.tar.gz \
-            | tar xz
-          cd ngspice-ngspice-44.2
-          ./autogen.sh
+          curl -sL \
+            "https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/old-releases/44/ngspice-44.tar.gz" \
+            -o ngspice-44.tar.gz
+          tar xzf ngspice-44.tar.gz
+          cd ngspice-44
           ./configure --prefix=/usr/local --enable-ngshared --enable-xspice \
             --enable-osdi --disable-debug
           make -j"$(nproc)"
