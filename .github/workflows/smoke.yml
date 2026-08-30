@@ -17,14 +17,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison flex libfftw3-dev \
-            libx11-dev libxt-dev libreadline-dev
+            libx11-dev libxt-dev libxaw7-dev libreadline-dev
           curl -sL \
             "https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/old-releases/44/ngspice-44.tar.gz" \
             -o ngspice-44.tar.gz
           tar xzf ngspice-44.tar.gz
           cd ngspice-44
           ./configure --prefix=/usr/local --enable-ngshared --enable-xspice \
-            --enable-osdi --disable-debug
+            --enable-osdi --disable-debug --without-x
           make -j"$(nproc)"
           sudo make install
           sudo ldconfig
