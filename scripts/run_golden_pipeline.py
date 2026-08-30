@@ -41,6 +41,7 @@ from acm_opt.fit_golden import (  # noqa: E402
     write_error_vs_iteration_plot,
     write_fit_history_csv,
     write_fitted_card,
+    write_idvg_fit_overlay_plot,
 )
 from acm_opt.loss import LossPolicy, loss_policy_from_mapping  # noqa: E402
 from acm_opt.models import ModelSpec, resolve_models  # noqa: E402
@@ -139,6 +140,15 @@ def _fit_one_target(
     write_error_vs_iteration_plot(
         fit_dir / f"{name}_error_vs_iter.png",
         result,
+    )
+    write_idvg_fit_overlay_plot(
+        fit_dir / f"{name}_idvg_fit.png",
+        golden=golden,
+        model=model,
+        parameters=result.parameters,
+        vg_start=vg_start,
+        vg_step=vg_step,
+        work_dir=work_dir / "idvg_plot",
     )
     print(
         f"    err={result.weighted_error:.4g} "

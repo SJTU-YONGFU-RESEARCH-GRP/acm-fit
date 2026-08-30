@@ -709,6 +709,60 @@ def write_combined_error_vs_iteration_plot(
     plt.close(fig)
 
 
+def write_idvg_fit_overlay_plot(
+    path: Path,
+    *,
+    golden: GoldenDevice,
+    model: ModelSpec,
+    parameters: Mapping[str, float],
+    vg_start: float,
+    vg_step: float,
+    work_dir: Path,
+) -> None:
+    """Plot golden vs fitted ACM Id–Vg at every VDS in the golden corpus."""
+    if not golden.curves:
+        raise ValueError(f"no golden curves for {golden.pdk}")
+    polarity = str(golden.meta.get("polarity", "nmos"))
+    n_curves = len(golden.curves)
+    fig, axes = plt.subplots(n_curves, 2, figsize=(10.0, 3.2 * n_curves), squeeze=False)
+    for row_idx, curve in enumerate(golden.curves):
+        vg_acm, id_acm, _, _ = _run_acm_idvg(
+            model=model,
+            params=parameters,
+            vds=curve.vds,
+            vdd=golden.vdd,
+            vg_start=vg_start,
+            vg_step=vg_step,
+            work_dir=work_dir / f"vds_{row_idx}",
+            polarity=polarity,
+        )
+        ax_lin, ax_log = axes[row_idx, 0], axes[row_idx, 1]
+        ax_lin.plot(curve.vg, curve.id_ref * 1e6, color="#4d4d4d", linewidth=2, label="Reference")
+        ax_lin.plot(vg_acm, id_acm * 1e6, color="#c41e3a", linewidth=2, linestyle="--", label="ACM fit")
+        ax_lin.set_xlabel("Vg (V)")
+        ax_lin.set_ylabel("Id (µA)")
+        ax_lin.set_title(f"Vds = {curve.vds:g} V (linear)")
+        ax_lin.grid(True, alpha=0.3)
+        ax_lin.legend(loc="best")
+
+        mask_ref = curve.id_ref > 0
+        mask_acm = id_acm > 0
+        ax_log.semilogy(curve.vg[mask_ref], curve.id_ref[mask_ref], color="#4d4d4d", linewidth=2, label="Reference")
+        ax_log.semilogy(vg_acm[mask_acm], id_acm[mask_acm], color="#c41e3a", linewidth=2, linestyle="--", label="ACM fit")
+        ax_log.set_xlabel("Vg (V)")
+        ax_log.set_ylabel("Id (A)")
+        ax_log.set_title(f"Vds = {curve.vds:g} V (log)")
+        ax_log.grid(True, alpha=0.3)
+        if row_idx == 0:
+            ax_log.legend(loc="best")
+
+    fig.suptitle(f"{golden.pdk} — Id–Vg fit overlay", fontsize=12, fontweight="bold")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def write_fitted_card(
     path: Path,
     result: FitResult,
@@ -758,4 +812,5 @@ __all__ = [
     "write_error_vs_iteration_plot",
     "write_fit_history_csv",
     "write_fitted_card",
+    "write_idvg_fit_overlay_plot",
 ]

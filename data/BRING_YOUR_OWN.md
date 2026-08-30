@@ -99,6 +99,13 @@ Outputs: `results/custom/acm5/fit/<target>.json`, `SUMMARY.md`.
 | **BSIM capture** | Full pipeline with PDK paths (no `data_only`) |
 | **TCAD / measured data** | Same CSV layout; set `"source": "user_supplied"` in meta |
 
+Set `"source"` in `meta.json` so `SUMMARY.md` records dataset provenance. Reports adapt automatically:
+
+| Input | Fit section | Waveform plots |
+|-------|-------------|----------------|
+| PDK / PTM BSIM (`bash scripts/run_all.sh commercial` or `ptm`) | Id–Vg vs BSIM + optimized params | DC Id–Vg overlay + AC/noise/temp/transient eval overlays |
+| User CSV (`bash scripts/run_all.sh custom`) | Id–Vg vs your data + params | DC Id–Vg overlay only (no BSIM eval without reference waveforms) |
+
 ## Naming rules
 
 | Field | Rule |

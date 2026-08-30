@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from acm_report.plots import write_eval_overlay_plots
+from acm_report.sources import discover_input_sources, report_capabilities
+
 _RESERVED = frozenset({"golden", "ablation"})
 
 
@@ -188,6 +191,26 @@ def _eval_table_rows(
     return out
 
 
+def _fmt_geom(value: Any) -> str:
+    """Format geometry fields for markdown tables."""
+    if value == "—" or value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:.3g}"
+    return str(value)
+
+
+def _source_label(source: str) -> str:
+    """Human-readable label for golden ``meta.json`` source."""
+    labels = {
+        "pdk_bsim_ngspice": "PDK BSIM (ngspice)",
+        "ptm_bsim_ngspice": "PTM BSIM (ngspice)",
+        "user_supplied": "User Id–Vg CSV",
+        "user_supplied_example": "Bundled example CSV",
+    }
+    return labels.get(source, source)
+
+
 def write_regression_reports(
     *,
     repo_root: Path,
@@ -224,6 +247,20 @@ def write_regression_reports(
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     outputs: dict[str, Path] = {}
+    targets = sorted({str(c["pdk"]) for c in cards})
+    sources = discover_input_sources(results_dir, targets)
+    capabilities = report_capabilities(sources=sources, eval_rows=eval_rows)
+
+    for model in models:
+        model_dir = model_dirs[model]
+        model_eval = [r for r in eval_rows if r["model"] == model]
+        ref_label = "BSIM golden" if capabilities["eval_waveforms"] else "Reference"
+        write_eval_overlay_plots(
+            results_dir=results_dir,
+            model=model,
+            eval_rows=model_eval,
+            ref_label=ref_label,
+        )
 
     for model in models:
         model_dir = model_dirs[model]
@@ -238,6 +275,8 @@ def write_regression_reports(
                     fit_dir=model_dir / "fit",
                     report_dir=model_dir,
                     stamp=stamp,
+                    sources=[s for s in sources if s["target"] in {c["pdk"] for c in cards if c["model"] == model}],
+                    capabilities=capabilities,
                 )
             )
             + "\n"
@@ -254,6 +293,8 @@ def write_regression_reports(
                 eval_rows=eval_rows,
                 stamp=stamp,
                 results_dir=results_dir,
+                sources=sources,
+                capabilities=capabilities,
             )
         )
         + "\n"
@@ -270,12 +311,31 @@ def _build_summary(
     eval_rows: Sequence[Mapping[str, Any]],
     stamp: str,
     results_dir: Path,
+    sources: Sequence[Mapping[str, Any]],
+    capabilities: Mapping[str, bool],
 ) -> list[str]:
     """Compose overall SUMMARY.md body."""
     pred_ok = sum(1 for r in predict_rows if _status_ok(r))
     pred_fail = len(predict_rows) - pred_ok
     eval_ok = sum(1 for r in eval_rows if _status_ok(r))
     eval_fail = len(eval_rows) - eval_ok
+
+    if capabilities.get("user_supplied_only"):
+        fit_heading = "Golden I-V fit (ACM vs user-supplied Id–Vg)"
+        fit_blurb = "Parameter extraction accuracy against user-supplied multi-VDS Id–Vg tables."
+        eval_blurb = "_Eval suite not run (no BSIM reference waveforms for user CSV input)._"
+    elif capabilities.get("eval_waveforms"):
+        fit_heading = "Golden I-V fit (ACM vs PDK BSIM Id–Vg)"
+        fit_blurb = "Parameter extraction accuracy against golden multi-VDS Id–Vg tables."
+        eval_blurb = (
+            "Golden waveforms are captured once from PDK BSIM in **ngspice**. "
+            "ACM-only runs on each simulator are scored with RMSE vs that golden. "
+            "**Runtime / peak RSS** are ACM-only (not a dual-DUT netlist)."
+        )
+    else:
+        fit_heading = "Golden I-V fit"
+        fit_blurb = "Parameter extraction accuracy against golden multi-VDS Id–Vg tables."
+        eval_blurb = "_Eval suite not run._"
 
     lines: list[str] = [
         "# Regression SUMMARY",
@@ -284,11 +344,12 @@ def _build_summary(
         "",
         "## What each section measures",
         "",
-        "| Section | Compared to BSIM? | Accuracy | Runtime / memory |",
+        "| Section | Compared to reference? | Accuracy | Runtime / memory |",
         "| --- | --- | --- | --- |",
-        "| Golden I-V fit | Yes (multi-VDS Id–Vg, ngspice PDK) | Weighted / linear / log RMSE of Id | Fit wall time + Optuna evals |",
+        "| Input sources | — | Dataset provenance (PDK, user CSV, …) | Geometry + VDD |",
+        "| Golden I-V fit | Yes (multi-VDS Id–Vg) | Weighted / linear / log RMSE of Id | Fit wall time + Optuna evals |",
         "| Predict benches | No (ACM-only smoke) | — | Per-sim ACM wall time + peak RSS |",
-        "| Eval suite | Yes (golden = ngspice PDK BSIM) | ACM on ngspice/Spectre/HSPICE vs golden RMSE | ACM-only wall time + peak RSS |",
+        "| Eval suite | Yes when BSIM refs exist | ACM vs golden RMSE (DC/AC/noise/temp/tran) | ACM-only wall time + peak RSS |",
         "",
         "## Status",
         "",
@@ -296,26 +357,77 @@ def _build_summary(
         f"- Fitted cards: **{len(cards)}**",
         f"- Predict benches: **{pred_ok} ok** / **{pred_fail} fail** "
         f"(of {len(predict_rows)})",
-        f"- Eval suite (ACM vs ngspice PDK golden): **{eval_ok} ok** / "
-        f"**{eval_fail} fail** (of {len(eval_rows)})",
-        "",
-        "## Layout",
-        "",
-        "```",
-        "results/",
-        "  SUMMARY.md",
-        "  golden/<pdk>/",
-        "    ref/<analysis>/ref.csv   # ngspice PDK BSIM golden",
-        "  <model>/",
-        "    REPORT.md",
-        "    fit/<pdk>.json",
-        "    benches/<pdk>/<sim>/<analysis>/",
-        "    eval/<pdk>/<sim>/<analysis>/acm.csv",
-        "```",
-        "",
-        "## Model reports",
-        "",
     ]
+    if eval_rows:
+        lines.append(
+            f"- Eval suite (ACM vs reference golden): **{eval_ok} ok** / "
+            f"**{eval_fail} fail** (of {len(eval_rows)})"
+        )
+    else:
+        lines.append("- Eval suite: **not run** (fit-only or user CSV input)")
+
+    if sources:
+        lines.extend(
+            [
+                "",
+                "## Input sources",
+                "",
+                "Golden fit targets and where their Id–Vg reference curves came from.",
+                "",
+            ]
+        )
+        lines.extend(
+            _md_table(
+                [
+                    "Target",
+                    "Source",
+                    "VDD (V)",
+                    "W (m)",
+                    "L (m)",
+                    "Polarity",
+                    "Corner",
+                    "# VDS curves",
+                ],
+                [
+                    [
+                        row["target"],
+                        _source_label(str(row["source"])),
+                        _fmt_geom(row["vdd"]),
+                        _fmt_geom(row["width_m"]),
+                        _fmt_geom(row["length_m"]),
+                        row["polarity"],
+                        row["corner"],
+                        row["n_curves"],
+                    ]
+                    for row in sources
+                ],
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Layout",
+            "",
+            "```",
+            "results/",
+            "  SUMMARY.md",
+            "  golden/<pdk>/",
+            "    meta.json + idvg_vds_*.csv",
+            "    ref/<analysis>/ref.csv   # eval BSIM golden (when available)",
+            "  <model>/",
+            "    REPORT.md",
+            "    fit/<pdk>.json",
+            "    fit/<pdk>_idvg_fit.png",
+            "    plots/<pdk>/eval_<analysis>.png",
+            "    benches/<pdk>/<sim>/<analysis>/",
+            "    eval/<pdk>/<sim>/<analysis>/acm.csv",
+            "```",
+            "",
+            "## Model reports",
+            "",
+        ]
+    )
     for model in models:
         lines.append(f"- [`{model}`]({model}/REPORT.md)")
 
@@ -323,9 +435,9 @@ def _build_summary(
         lines.extend(
             [
                 "",
-                "## Golden I-V fit (ACM vs PDK BSIM Id–Vg)",
+                f"## {fit_heading}",
                 "",
-                "Parameter extraction accuracy against golden multi-VDS Id–Vg tables.",
+                fit_blurb,
                 "",
             ]
         )
@@ -357,12 +469,27 @@ def _build_summary(
             )
         )
         for model in models:
-            plot = results_dir / model / "fit" / "error_vs_iteration.png"
-            if plot.is_file():
+            model_cards = [c for c in cards if c["model"] == model]
+            for card in sorted(model_cards, key=lambda x: str(x["pdk"])):
+                pdk = str(card["pdk"])
+                plot = results_dir / model / "fit" / f"{pdk}_idvg_fit.png"
+                if plot.is_file():
+                    rel = f"{model}/fit/{pdk}_idvg_fit.png"
+                    lines.extend(
+                        [
+                            "",
+                            f"### {model} / {pdk} — Id–Vg fit",
+                            "",
+                            f"![Id-Vg fit]({rel})",
+                            "",
+                        ]
+                    )
+            combined = results_dir / model / "fit" / "error_vs_iteration.png"
+            if combined.is_file():
                 lines.extend(
                     [
                         "",
-                        f"### {model}",
+                        f"### {model} — fit convergence",
                         "",
                         f"![error vs iteration]({model}/fit/error_vs_iteration.png)",
                         "",
@@ -410,11 +537,9 @@ def _build_summary(
         lines.extend(
             [
                 "",
-                "## Eval suite (ACM vs ngspice PDK golden)",
+                "## Eval suite (ACM vs reference golden)",
                 "",
-                "Golden waveforms are captured once from PDK BSIM in **ngspice**. "
-                "ACM-only runs on each simulator are scored with RMSE vs that golden. "
-                "**Runtime / peak RSS** are ACM-only (not a dual-DUT netlist).",
+                eval_blurb,
                 "",
             ]
         )
@@ -435,6 +560,23 @@ def _build_summary(
                 _eval_table_rows(eval_rows, include_model=True),
             )
         )
+        for model in models:
+            plot_root = results_dir / model / "plots"
+            if not plot_root.is_dir():
+                continue
+            for plot in sorted(plot_root.rglob("eval_*.png")):
+                rel = plot.relative_to(results_dir).as_posix()
+                label = plot.stem.replace("eval_", "").upper()
+                pdk = plot.parent.name
+                lines.extend(
+                    [
+                        "",
+                        f"### {model} / {pdk} — {label}",
+                        "",
+                        f"![{label}]({rel})",
+                        "",
+                    ]
+                )
 
     lines.append("")
     return lines
@@ -449,8 +591,11 @@ def _build_model_report(
     fit_dir: Path,
     report_dir: Path,
     stamp: str,
+    sources: Sequence[Mapping[str, Any]],
+    capabilities: Mapping[str, bool],
 ) -> list[str]:
     """Compose one model REPORT.md body."""
+    ref_name = "user Id–Vg CSV" if capabilities.get("user_supplied_only") else "PDK BSIM golden"
     lines: list[str] = [
         f"# {model} REPORT",
         "",
@@ -460,15 +605,45 @@ def _build_model_report(
         "",
         "## Metrics guide",
         "",
-        "- **Fit**: ACM DC params vs golden PDK BSIM Id–Vg (ngspice).",
+        f"- **Fit**: ACM DC params vs {ref_name} Id–Vg.",
         "- **Predict**: ACM-only portability smoke across simulators.",
-        "- **Eval**: Golden = ngspice PDK BSIM waveforms; ACM scored on "
-        "ngspice/Spectre/HSPICE (RMSE + ACM-only RT/RSS).",
+        "- **Eval**: Golden reference waveforms vs ACM (when BSIM refs are available).",
         "",
     ]
 
+    if sources:
+        lines.extend(
+            [
+                "## Input sources",
+                "",
+            ]
+        )
+        lines.extend(
+            _md_table(
+                ["Target", "Source", "VDD (V)", "W (m)", "L (m)", "Polarity", "Corner"],
+                [
+                    [
+                        row["target"],
+                        _source_label(str(row["source"])),
+                        _fmt_geom(row["vdd"]),
+                        _fmt_geom(row["width_m"]),
+                        _fmt_geom(row["length_m"]),
+                        row["polarity"],
+                        row["corner"],
+                    ]
+                    for row in sources
+                ],
+            )
+        )
+        lines.append("")
+
     if cards:
-        lines.extend(["## Fitted parameters (golden I-V vs BSIM)", ""])
+        fit_title = (
+            "Fitted parameters (user Id–Vg reference)"
+            if capabilities.get("user_supplied_only")
+            else "Fitted parameters (golden I-V vs BSIM)"
+        )
+        lines.extend([f"## {fit_title}", ""])
         lines.extend(
             _md_table(
                 [
@@ -518,6 +693,15 @@ def _build_model_report(
                 raise FileNotFoundError(plot)
             rel = Path(os.path.relpath(plot, start=report_dir)).as_posix()
             lines.extend([f"![error vs iteration]({rel})", ""])
+            idvg_plot = fit_dir / f"{pdk}_idvg_fit.png"
+            if idvg_plot.is_file():
+                rel_idvg = Path(os.path.relpath(idvg_plot, start=report_dir)).as_posix()
+                lines.extend(
+                    [
+                        f"![Id-Vg fit overlay]({rel_idvg})",
+                        "",
+                    ]
+                )
         combined = fit_dir / "error_vs_iteration.png"
         if combined.is_file():
             rel = Path(os.path.relpath(combined, start=report_dir)).as_posix()
@@ -569,7 +753,7 @@ def _build_model_report(
         ]
     )
     if not eval_rows:
-        lines.append("_No eval-suite rows for this model._")
+        lines.append("_No eval-suite rows for this model (fit-only or user CSV input)._")
         lines.append("")
     else:
         lines.extend(
@@ -589,6 +773,21 @@ def _build_model_report(
             )
         )
         lines.append("")
+        plot_root = report_dir / "plots"
+        if plot_root.is_dir():
+            lines.extend(["## Eval waveform overlays", ""])
+            for plot in sorted(plot_root.rglob("eval_*.png")):
+                rel = Path(os.path.relpath(plot, start=report_dir)).as_posix()
+                label = plot.stem.replace("eval_", "").upper()
+                pdk = plot.parent.name
+                lines.extend(
+                    [
+                        f"### {pdk} — {label}",
+                        "",
+                        f"![{label}]({rel})",
+                        "",
+                    ]
+                )
 
     return lines
 
