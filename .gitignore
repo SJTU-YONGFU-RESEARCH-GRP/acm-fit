@@ -4,6 +4,9 @@ work/
 results/*/
 !results/.gitkeep
 config/pdk_env.local.json
+config/golden_suite_custom.json
+data/golden/custom/*
+!data/golden/custom/.gitkeep
 __pycache__/
 *.pyc
 *.log

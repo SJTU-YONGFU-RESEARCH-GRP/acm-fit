@@ -239,6 +239,29 @@ bash scripts/export_golden_data.sh commercial
 bash scripts/export_golden_data.sh ptm
 ```
 
+### Bring your own Id–Vg data
+
+You do **not** need a PDK install to fit against your own reference curves. Full guide: [data/BRING_YOUR_OWN.md](data/BRING_YOUR_OWN.md).
+
+```bash
+# 1. Scaffold meta.json (lists expected CSV filenames)
+python3 scripts/scaffold_golden_target.py \
+  --out data/golden/custom/my_device \
+  --pdk my_device --vdd 1.8 --width-m 3e-6 --length-m 180e-9 \
+  --vds 0.09,0.9,1.8
+
+# 2. Add your vg,id_ref CSVs, then validate
+PYTHONPATH=src python3 scripts/validate_golden.py data/golden/custom/my_device
+
+# 3. Point config/golden_suite_custom.json at data_only targets (see example)
+cp config/golden_suite_custom.example.json config/golden_suite_custom.json
+
+# 4. One-command fit (imports data/golden/custom/, skips eval)
+bash scripts/run_all.sh custom
+```
+
+Set `"data_only": true` on targets in the golden suite JSON so `ngspice_section` / `ref_device` are not required.
+
 ## Generated outputs (`results/`)
 
 Pipeline outputs are written under `results/<lane>/` and are **gitignored** (regenerate locally or archive separately).
@@ -286,6 +309,7 @@ golden capture (BSIM Id–Vg)
 |------|--------|-------------|-------------------|
 | `commercial` | `config/golden_suite_commercial.json` | `config/eval_suite.json` | `sky130_tt`, `gf180mcu_typical` |
 | `ptm` | `config/golden_suite_ptm.json` | `config/eval_suite_ptm.json` | `ptm180`…`ptm22` (all 7) |
+| `custom` | `config/golden_suite_custom.json` | — (fit-only) | — |
 | `smoke` | `config/golden_suite_smoke.json` | — | — |
 
 ### Process corners
@@ -327,16 +351,18 @@ Outputs:
 ### `scripts/run_all.sh`
 
 ```text
-bash scripts/run_all.sh [all|commercial|ptm] [options]
+bash scripts/run_all.sh [all|commercial|ptm|custom] [options]
 
 Options:
   --jobs N            Parallel ngspice workers (default 4)
   --iterations N      Optuna trials per fit (default 25)
   --frozen-golden     Import data/golden/<lane>/ then skip capture
+  --golden-from DIR   Custom lane: import goldens from DIR (default data/golden/custom/)
+  --config FILE       Custom lane: suite JSON (default config/golden_suite_custom.json)
   --skip-golden       Skip BSIM capture (use existing results/<lane>/golden/)
   --skip-fit          Skip Optuna fit
   --skip-predict      Skip predict benches
-  --skip-eval         Skip ACM vs BSIM eval (eval is ON by default)
+  --skip-eval         Skip ACM vs BSIM eval (eval is ON by default; custom lane skips eval)
   --eval              Force eval on (default)
   --force             Re-run cached eval jobs
 ```
@@ -374,7 +400,10 @@ python3 scripts/run_eval_suite.py \
 |--------|---------|
 | `scripts/setup_env.sh` | Fetch OpenVAF binary into `work/` |
 | `scripts/load_pdk_env.sh` | Export env vars from `pdk_env.local.json` |
-| `scripts/import_golden_data.sh` | Copy `data/golden/<lane>/` → `results/` |
+| `scripts/import_golden_data.sh` | Copy golden dirs → `results/` (`--from` / `--to` for custom paths) |
+| `scripts/convert_csv_golden.py` | Import generic `vg`/`id` CSVs into golden layout |
+| `scripts/scaffold_golden_target.py` | Create `meta.json` for a new user target |
+| `scripts/validate_golden.py` | Validate `meta.json` + CSV layout |
 | `scripts/export_golden_data.sh` | Copy `results/<lane>/golden/` → `data/golden/` |
 | `scripts/clean.sh` | Remove `results/*/` and `work/` |
 | `scripts/sync_src.sh` | Sync Python `src/` from monorepo |

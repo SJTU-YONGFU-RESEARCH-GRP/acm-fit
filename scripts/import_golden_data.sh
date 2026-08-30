@@ -1,36 +1,73 @@
 #!/usr/bin/env bash
-# Copy frozen BSIM I-V goldens from data/golden/<lane>/ into results/<lane>/golden/.
+# Import frozen Id-Vg goldens into results/<lane>/golden/ (or a custom results root).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-LANE="${1:-}"
-RESULTS_ROOT="${2:-}"
-if [[ -z "${LANE}" ]]; then
-    echo "Usage: bash scripts/import_golden_data.sh <commercial|ptm> [results_root]" >&2
+usage() {
+    cat <<'EOF'
+Usage:
+  bash scripts/import_golden_data.sh <commercial|ptm> [results_root]
+  bash scripts/import_golden_data.sh --from <src_dir> --to <results_root>
+
+Copies meta.json and idvg_vds_*.csv into <results_root>/golden/.
+EOF
+}
+
+SRC=""
+DST=""
+LANE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --from) SRC="$2"; shift 2 ;;
+        --to) DST="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            if [[ -z "${LANE}" ]]; then
+                LANE="$1"
+                shift
+            else
+                DST="$1"
+                shift
+            fi
+            ;;
+    esac
+done
+
+if [[ -n "${LANE}" && -z "${SRC}" ]]; then
+    SRC="${RELEASE_ROOT}/data/golden/${LANE}"
+fi
+
+if [[ -z "${SRC}" ]]; then
+    usage >&2
     exit 1
 fi
 
-SRC="${RELEASE_ROOT}/data/golden/${LANE}"
-if [[ -n "${RESULTS_ROOT}" ]]; then
-    DST="${RESULTS_ROOT}/golden"
-else
-    DST="${RELEASE_ROOT}/results/${LANE}/golden"
+if [[ -n "${LANE}" && -z "${DST}" ]]; then
+    DST="${RELEASE_ROOT}/results/${LANE}"
 fi
 
+if [[ -z "${DST}" ]]; then
+    echo "ERROR: missing results root (--to or second positional arg)" >&2
+    usage >&2
+    exit 1
+fi
+
+GOLDEN_DST="${DST}/golden"
 if [[ ! -d "${SRC}" ]]; then
-    echo "Missing frozen golden lane: ${SRC}" >&2
+    echo "Missing source golden dir: ${SRC}" >&2
     exit 1
 fi
 
-mkdir -p "${DST}"
+mkdir -p "${GOLDEN_DST}"
 rsync -a --delete \
     --include='*/' \
     --include='*.csv' \
     --include='meta.json' \
     --exclude='*' \
-    "${SRC}/" "${DST}/"
+    "${SRC}/" "${GOLDEN_DST}/"
 
-echo "Imported frozen golden ${LANE}: ${SRC} -> ${DST}"
-find "${DST}" -mindepth 1 -maxdepth 1 -type d | wc -l | xargs -I{} echo "  targets: {}"
+echo "Imported golden: ${SRC} -> ${GOLDEN_DST}"
+find "${GOLDEN_DST}" -mindepth 1 -maxdepth 1 -type d | wc -l | xargs -I{} echo "  targets: {}"

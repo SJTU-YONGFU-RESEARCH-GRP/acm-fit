@@ -254,6 +254,7 @@ def main() -> None:
                     vds_fractions=vds_fractions,
                 ): name
                 for name, target in targets.items()
+                if not target.data_only
             }
             for fut in as_completed(futures):
                 fut.result()
@@ -387,28 +388,25 @@ def main() -> None:
             raise SystemExit(1)
 
     print("=== Step 4: write SUMMARY.md + per-model REPORT.md ===")
-    if args.skip_fit and args.skip_predict:
-        print("  skipped (golden-only run)")
-    else:
-        reports = write_regression_reports(repo_root=ROOT, results_dir=results_dir)
-        print(f"  {reports['summary']}")
-        for model, path in sorted(reports.items()):
-            if model == "summary":
-                continue
-            print(f"  {path}")
+    reports = write_regression_reports(repo_root=ROOT, results_dir=results_dir)
+    print(f"  {reports['summary']}")
+    for model, path in sorted(reports.items()):
+        if model == "summary":
+            continue
+        print(f"  {path}")
 
-        for model in models:
-            fit_dir = results_dir / model.name / "fit"
-            if not fit_dir.is_dir():
-                continue
-            try:
-                corner_path = write_corner_report(
-                    results_dir=results_dir,
-                    model=model.name,
-                )
-                print(f"  {corner_path}")
-            except (FileNotFoundError, ValueError):
-                pass
+    for model in models:
+        fit_dir = results_dir / model.name / "fit"
+        if not fit_dir.is_dir():
+            continue
+        try:
+            corner_path = write_corner_report(
+                results_dir=results_dir,
+                model=model.name,
+            )
+            print(f"  {corner_path}")
+        except (FileNotFoundError, ValueError):
+            pass
 
     print("Pipeline complete.")
     print(f"  results: {results_dir}")

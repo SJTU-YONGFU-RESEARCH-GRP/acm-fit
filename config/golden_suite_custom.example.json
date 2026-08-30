@@ -1,0 +1,34 @@
+{
+  "suite_version": 3,
+  "description": "Example: fit ACM-5 from user-supplied Id-Vg CSVs (no BSIM capture).",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_fractions": [0.05, 0.5, 1.0],
+  "fit_models": ["acm5"],
+  "predict_analyses": ["dc"],
+  "predict_simulators": ["ngspice"],
+  "fit_loss": {
+    "id_mode": "absolute",
+    "weight_linear": 0.4,
+    "weight_log": 0.6,
+    "huber_delta": 1.0e-4,
+    "region_vt_width_v": 0.0,
+    "region_vt_boost": 2.0,
+    "weight_dc": 1.0,
+    "weight_ac": 0.0,
+    "weight_noise": 0.0,
+    "weight_temp": 0.0,
+    "optuna_trials": 25,
+    "refine_starts": 3,
+    "refine_maxiter": 15
+  },
+  "targets": {
+    "demo_nmos": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3.0e-6,
+      "length_m": 1.8e-7,
+      "polarity": "nmos"
+    }
+  }
+}

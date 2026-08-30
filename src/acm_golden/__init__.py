@@ -28,6 +28,7 @@ class GoldenTarget:
     polarity: str = "nmos"
     base_pdk: str | None = None
     corner: str | None = None
+    data_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -81,9 +82,10 @@ def _flatten_golden_targets(raw_targets: Mapping[str, Any]) -> dict[str, dict[st
     for pdk_name, entry in raw_targets.items():
         corners = entry.get("corners")
         if corners is None:
-            if "ngspice_section" not in entry:
+            if not entry.get("data_only") and "ngspice_section" not in entry:
                 raise ValueError(
-                    f"target {pdk_name!r}: ngspice_section required when corners absent"
+                    f"target {pdk_name!r}: ngspice_section required when corners absent "
+                    "(or set data_only=true)"
                 )
             flat[pdk_name] = dict(entry)
             continue
@@ -123,16 +125,34 @@ def load_golden_config(path: Path, repo_root: Path) -> dict[str, Any]:
         polarity = str(entry.get("polarity", "nmos"))
         if polarity not in {"nmos", "pmos"}:
             raise ValueError(f"target {name!r}: polarity must be nmos or pmos, got {polarity!r}")
+        data_only = bool(entry.get("data_only", False))
+        if data_only:
+            if entry.get("ngspice_section") or entry.get("ref_device"):
+                raise ValueError(
+                    f"target {name!r}: data_only targets must not set "
+                    "ngspice_section or ref_device"
+                )
+            section = ""
+            ref_device = ""
+        else:
+            if "ngspice_section" not in entry or "ref_device" not in entry:
+                raise ValueError(
+                    f"target {name!r}: ngspice_section and ref_device required "
+                    "(or set data_only=true for user-supplied golden CSVs)"
+                )
+            section = _expand(entry["ngspice_section"], env, repo_root)
+            ref_device = str(entry["ref_device"])
         targets[name] = GoldenTarget(
             name=name,
             vdd=float(entry["vdd"]),
             width_m=float(entry["width_m"]),
             length_m=float(entry["length_m"]),
-            ngspice_section=_expand(entry["ngspice_section"], env, repo_root),
-            ref_device=str(entry["ref_device"]),
+            ngspice_section=section,
+            ref_device=ref_device,
             polarity=polarity,
             base_pdk=str(entry["pdk"]) if entry.get("pdk") is not None else None,
             corner=str(entry["corner"]) if entry.get("corner") is not None else None,
+            data_only=data_only,
         )
     raw["_targets"] = targets
     return raw
@@ -181,6 +201,11 @@ def capture_golden_iv(
     Returns:
         Loaded :class:`GoldenDevice`.
     """
+    if target.data_only:
+        raise ValueError(
+            f"target {target.name!r} is data_only; supply golden CSVs under "
+            f"{output_dir} and run with --skip-golden"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
     spiceinit = output_dir / ".spiceinit"
     if not spiceinit.exists():
@@ -274,9 +299,17 @@ wrdata {out_txt} abs(i(VS1))
     )
 
 
+def validate_golden_device(device_dir: Path) -> GoldenDevice:
+    """Load and validate one golden device directory (raises on schema errors)."""
+    return load_golden_device(device_dir)
+
+
 def load_golden_device(device_dir: Path) -> GoldenDevice:
     """Load golden I-V corpus from a device directory."""
-    meta = json.loads((device_dir / "meta.json").read_text())
+    meta_path = device_dir / "meta.json"
+    if not meta_path.is_file():
+        raise FileNotFoundError(f"missing {meta_path}")
+    meta = json.loads(meta_path.read_text())
     polarity = str(meta.get("polarity", "nmos"))
     curves: list[GoldenCurve] = []
     for vds in meta["vds_list"]:
@@ -309,4 +342,5 @@ __all__ = [
     "load_golden_config",
     "capture_golden_iv",
     "load_golden_device",
+    "validate_golden_device",
 ]
