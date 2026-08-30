@@ -74,6 +74,74 @@ def write_xy_overlay_plot(
     return out_path
 
 
+def write_xy_solo_plot(
+    *,
+    acm_csv: Path,
+    out_path: Path,
+    title: str,
+    analysis: str,
+    acm_label: str = "ACM fit",
+) -> Path:
+    """Plot a single ACM ``x,y`` CSV waveform (no reference overlay)."""
+    x_acm, y_acm = _read_xy_csv(acm_csv)
+    x_label, y_label, log_x, log_y = _analysis_axes(analysis)
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    if log_x and log_y:
+        ax.loglog(x_acm, np.abs(y_acm), color=_ACM_RED, linewidth=2.0, label=acm_label)
+    elif log_x:
+        ax.semilogx(x_acm, np.abs(y_acm), color=_ACM_RED, linewidth=2.0, label=acm_label)
+    elif log_y:
+        ax.semilogy(x_acm, np.abs(y_acm), color=_ACM_RED, linewidth=2.0, label=acm_label)
+    else:
+        ax.plot(x_acm, y_acm, color=_ACM_RED, linewidth=2.0, label=acm_label)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+
+def write_bench_waveform_plots(
+    *,
+    results_dir: Path,
+    model: str,
+    predict_rows: Sequence[Mapping[str, Any]],
+) -> list[Path]:
+    """Write ``plots/<pdk>/bench_<analysis>.png`` for successful predict benches."""
+    written: list[Path] = []
+    for row in sorted(
+        predict_rows,
+        key=lambda x: (x["pdk"], x["simulator"], x["analysis"]),
+    ):
+        if not bool(row.get("ok")):
+            continue
+        pdk = str(row["pdk"])
+        analysis = str(row["analysis"])
+        simulator = str(row["simulator"])
+        acm_csv = results_dir / model / "benches" / pdk / simulator / analysis / "acm.csv"
+        if not acm_csv.is_file():
+            continue
+        ref_csv = results_dir / "golden" / pdk / "ref" / analysis / "ref.csv"
+        if ref_csv.is_file():
+            continue
+        out = results_dir / model / "plots" / pdk / f"bench_{analysis}.png"
+        write_xy_solo_plot(
+            acm_csv=acm_csv,
+            out_path=out,
+            title=f"{pdk} / {analysis} ({simulator}, ACM-only)",
+            analysis=analysis,
+            acm_label=str(row.get("model", model)),
+        )
+        written.append(out)
+    return written
+
+
 def write_eval_overlay_plots(
     *,
     results_dir: Path,
@@ -110,4 +178,9 @@ def write_eval_overlay_plots(
     return written
 
 
-__all__ = ["write_eval_overlay_plots", "write_xy_overlay_plot"]
+__all__ = [
+    "write_bench_waveform_plots",
+    "write_eval_overlay_plots",
+    "write_xy_overlay_plot",
+    "write_xy_solo_plot",
+]

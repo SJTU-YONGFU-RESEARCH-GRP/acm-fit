@@ -5,7 +5,7 @@
   "vg_step": 0.05,
   "vds_fractions": [0.05, 0.5, 1.0],
   "fit_models": ["acm5"],
-  "predict_analyses": ["dc"],
+  "predict_analyses": ["dc", "ac", "noise", "transient", "temp"],
   "predict_simulators": ["ngspice"],
   "fit_loss": {
     "id_mode": "absolute",
@@ -21,6 +21,22 @@
     "optuna_trials": 25,
     "refine_starts": 3,
     "refine_maxiter": 15
+  },
+  "analysis_defaults": {
+    "ac": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "noise": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    }
   },
   "targets": {
     "demo_nmos": {

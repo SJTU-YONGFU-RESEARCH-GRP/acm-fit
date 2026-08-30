@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from acm_report.plots import write_eval_overlay_plots
+from acm_report.plots import write_bench_waveform_plots, write_eval_overlay_plots
 from acm_report.sources import discover_input_sources, report_capabilities
 
 _RESERVED = frozenset({"golden", "ablation"})
@@ -254,12 +254,18 @@ def write_regression_reports(
     for model in models:
         model_dir = model_dirs[model]
         model_eval = [r for r in eval_rows if r["model"] == model]
+        model_predict = [r for r in predict_rows if r["model"] == model]
         ref_label = "BSIM golden" if capabilities["eval_waveforms"] else "Reference"
         write_eval_overlay_plots(
             results_dir=results_dir,
             model=model,
             eval_rows=model_eval,
             ref_label=ref_label,
+        )
+        write_bench_waveform_plots(
+            results_dir=results_dir,
+            model=model,
+            predict_rows=model_predict,
         )
 
     for model in models:
@@ -348,7 +354,7 @@ def _build_summary(
         "| --- | --- | --- | --- |",
         "| Input sources | — | Dataset provenance (PDK, user CSV, …) | Geometry + VDD |",
         "| Golden I-V fit | Yes (multi-VDS Id–Vg) | Weighted / linear / log RMSE of Id | Fit wall time + Optuna evals |",
-        "| Predict benches | No (ACM-only smoke) | — | Per-sim ACM wall time + peak RSS |",
+        "| Predict benches | No reference device | ACM-only waveforms (DC/AC/noise/temp/tran) | Per-sim ACM wall time + peak RSS |",
         "| Eval suite | Yes when BSIM refs exist | ACM vs golden RMSE (DC/AC/noise/temp/tran) | ACM-only wall time + peak RSS |",
         "",
         "## Status",
@@ -497,13 +503,19 @@ def _build_summary(
                 )
 
     if predict_rows:
+        bench_blurb = (
+            "ACM-only waveforms from the **fitted card** (no BSIM reference). "
+            "Shown for portability smoke and custom user-input reporting."
+            if capabilities.get("user_supplied_only")
+            else "Cross-simulator portability of the **fitted ACM card** "
+            "(no BSIM reference in these netlists)."
+        )
         lines.extend(
             [
                 "",
-                "## Predict benches (ACM-only, all simulators)",
+                "## Predict benches (ACM-only)",
                 "",
-                "Cross-simulator portability of the **fitted ACM card** "
-                "(no BSIM reference in these netlists).",
+                bench_blurb,
                 "",
             ]
         )
@@ -532,6 +544,23 @@ def _build_summary(
                 ],
             )
         )
+        for model in models:
+            plot_root = results_dir / model / "plots"
+            if not plot_root.is_dir():
+                continue
+            for plot in sorted(plot_root.rglob("bench_*.png")):
+                rel = plot.relative_to(results_dir).as_posix()
+                label = plot.stem.replace("bench_", "").upper()
+                pdk = plot.parent.name
+                lines.extend(
+                    [
+                        "",
+                        f"### {model} / {pdk} — {label} (ACM predict)",
+                        "",
+                        f"![{label} predict]({rel})",
+                        "",
+                    ]
+                )
 
     if eval_rows:
         lines.extend(
@@ -707,11 +736,22 @@ def _build_model_report(
             rel = Path(os.path.relpath(combined, start=report_dir)).as_posix()
             lines.extend(["### Fit convergence (all PDKs)", "", f"![]({rel})", ""])
 
+    predict_heading = (
+        "## Predict benches (ACM-only)"
+        if capabilities.get("user_supplied_only")
+        else "## Predict benches (ACM-only, all simulators)"
+    )
+    predict_blurb = (
+        "Waveforms simulated from the fitted ACM card (no reference device). "
+        "Use these for AC/noise/temp/transient reporting when only Id–Vg input was supplied."
+        if capabilities.get("user_supplied_only")
+        else "Portability smoke of the fitted card (no BSIM reference device)."
+    )
     lines.extend(
         [
-            "## Predict benches (ACM-only, all simulators)",
+            predict_heading,
             "",
-            "Portability smoke of the fitted card (no BSIM reference device).",
+            predict_blurb,
             "",
         ]
     )
@@ -742,6 +782,23 @@ def _build_model_report(
             )
         )
         lines.append("")
+        plot_root = report_dir / "plots"
+        if plot_root.is_dir():
+            bench_plots = sorted(plot_root.rglob("bench_*.png"))
+            if bench_plots:
+                lines.extend(["### ACM waveform plots", ""])
+                for plot in bench_plots:
+                    rel = Path(os.path.relpath(plot, start=report_dir)).as_posix()
+                    label = plot.stem.replace("bench_", "").upper()
+                    pdk = plot.parent.name
+                    lines.extend(
+                        [
+                            f"#### {pdk} — {label}",
+                            "",
+                            f"![{label}]({rel})",
+                            "",
+                        ]
+                    )
 
     lines.extend(
         [

@@ -103,8 +103,10 @@ Set `"source"` in `meta.json` so `SUMMARY.md` records dataset provenance. Report
 
 | Input | Fit section | Waveform plots |
 |-------|-------------|----------------|
-| PDK / PTM BSIM (`bash scripts/run_all.sh commercial` or `ptm`) | Id–Vg vs BSIM + optimized params | DC Id–Vg overlay + AC/noise/temp/transient eval overlays |
-| User CSV (`bash scripts/run_all.sh custom`) | Id–Vg vs your data + params | DC Id–Vg overlay only (no BSIM eval without reference waveforms) |
+| PDK / PTM BSIM (`bash scripts/run_all.sh commercial` or `ptm`) | Id–Vg vs BSIM + optimized params | DC Id–Vg overlay + eval vs BSIM (DC/AC/noise/temp/transient) + ACM-only predict benches |
+| User CSV (`bash scripts/run_all.sh custom`) | Id–Vg vs your data + params | DC Id–Vg overlay + **ACM-only** AC/noise/temp/transient predict plots (no BSIM reference) |
+
+The fitted ACM card is always used to **predict** DC/AC/noise/temperature/transient benches via ngspice, even when you only supplied Id–Vg CSVs. Eval (RMSE vs a reference) is skipped for custom input because there is no BSIM golden.
 
 ## Naming rules
 
