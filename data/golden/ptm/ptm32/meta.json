@@ -1,0 +1,17 @@
+{
+  "pdk": "ptm32",
+  "vdd": 1.0,
+  "width_m": 1e-06,
+  "length_m": 3.2e-08,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.05,
+    0.5,
+    1.0
+  ],
+  "n_points_per_curve": 21,
+  "source": "pdk_bsim_ngspice",
+  "role": "golden_iv_for_acm_dc_fit"
+}

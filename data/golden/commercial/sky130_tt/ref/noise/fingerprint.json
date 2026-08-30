@@ -1,0 +1,15 @@
+{
+  "digest": "84e8588441a6fb96c5a79105232525d55810f4e94b9457694272e8d27ca1bfc1",
+  "suite_version": 5,
+  "pdk": "sky130_tt",
+  "analysis": "noise",
+  "analysis_params": {
+    "vgs": 0.9,
+    "f_start": 1000.0,
+    "f_stop": 1000000000.0,
+    "points_per_decade": 10,
+    "rd_ohm": 1000.0
+  },
+  "pdk_section": ".lib \"/home/yongfu/.ciel/ciel/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice\" tt",
+  "ref_device": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3"
+}

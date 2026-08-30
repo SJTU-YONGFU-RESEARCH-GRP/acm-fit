@@ -1,15 +1,32 @@
 # Vendor dependencies
 
-## spice_model_collections (PTM lane)
+## spice_model_collections (git submodule)
 
-Clone the PTM BSIM corpus for the `ptm` benchmark lane:
+PTM BSIM model cards for the `ptm` benchmark lane are vendored as a **git submodule**
+at `vendor/spice_model_collections`.
+
+**After cloning acm-fit:**
 
 ```bash
-git clone https://github.com/SJTU-YONGFU-RESEARCH-GRP/spice_model_collections.git \
-  vendor/spice_model_collections
+git submodule update --init --recursive
 ```
 
-Set `SMC_ROOT=vendor/spice_model_collections` in `config/pdk_env.local.json`.
+Or clone with submodules in one step:
+
+```bash
+git clone --recurse-submodules <acm-fit-repo-url>
+```
+
+Set `SMC_ROOT=vendor/spice_model_collections` in `config/pdk_env.local.json`
+(see `config/pdk_env.example.json`).
+
+**Update the submodule** to the latest upstream commit:
+
+```bash
+git submodule update --remote vendor/spice_model_collections
+```
+
+Upstream: https://github.com/SJTU-YONGFU-RESEARCH-GRP/spice_model_collections
 
 ## Commercial PDKs (not redistributed)
 

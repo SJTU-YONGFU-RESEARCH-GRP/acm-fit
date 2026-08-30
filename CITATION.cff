@@ -10,8 +10,8 @@ authors:
     given-names: Kain Lu
   - family-names: Li
     given-names: Yongfu
-repository-code: 'https://github.com/PLACEHOLDER/acm-fit'
-license: Apache-2.0
+repository-code: 'https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit'
+license: CC-BY-4.0
 version: 0.1.0
 date-released: '2026-08-30'
 keywords:

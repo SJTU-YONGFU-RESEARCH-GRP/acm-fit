@@ -1,0 +1,19 @@
+{
+  "pdk": "gf180mcu_ss",
+  "vdd": 3.3,
+  "width_m": 5e-06,
+  "length_m": 3e-07,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.165,
+    1.65,
+    3.3
+  ],
+  "n_points_per_curve": 67,
+  "source": "pdk_bsim_ngspice",
+  "role": "golden_iv_for_acm_dc_fit",
+  "base_pdk": "gf180mcu",
+  "corner": "ss"
+}

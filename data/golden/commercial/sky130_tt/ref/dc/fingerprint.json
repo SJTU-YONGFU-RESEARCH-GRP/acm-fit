@@ -1,0 +1,12 @@
+{
+  "digest": "2ee879127afc6feb16d08581a912e0a004a4b5ef0d67cc4e3c30c6f67e6c6f74",
+  "suite_version": 5,
+  "pdk": "sky130_tt",
+  "analysis": "dc",
+  "analysis_params": {
+    "vg_start": 0.0,
+    "vg_step": 0.05
+  },
+  "pdk_section": ".lib \"/home/yongfu/.ciel/ciel/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice\" tt",
+  "ref_device": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3"
+}

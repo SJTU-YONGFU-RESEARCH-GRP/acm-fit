@@ -32,7 +32,7 @@ Full corner report: `results/commercial/CORNER_REPORT.md` (after commercial run)
 | gf180mcu_typical | DC | Id RMSE log 0.439 |
 | gf180mcu_typical | AC | Vmag RMSE 0.391 |
 
-Run: `bash scripts/run_all.sh commercial --eval`
+Included in `bash scripts/run_all.sh` (commercial + PTM lanes by default).
 
 ## Figures
 

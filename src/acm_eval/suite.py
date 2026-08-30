@@ -124,6 +124,85 @@ def _load_fitted_card(results_dir: Path, model: str, pdk: str) -> dict[str, Any]
     return payload
 
 
+def _capture_one_golden_ref(
+    *,
+    suite: SuiteConfig,
+    results_dir: Path,
+    pdk: str,
+    analysis: str,
+    force: bool,
+) -> tuple[tuple[str, str], Path]:
+    """Capture one ngspice PDK-BSIM reference waveform."""
+    pdk_cfg = suite.pdks[pdk]
+    ref_dir = results_dir / "golden" / pdk / "ref" / analysis
+    ref_csv = ref_dir / "ref.csv"
+    marker = ref_dir / "SUCCESS"
+    fp_path = ref_dir / "fingerprint.json"
+    digest_payload = {
+        "suite_version": suite.suite_version,
+        "pdk": pdk,
+        "analysis": analysis,
+        "analysis_params": suite.analysis_defaults[analysis],
+        "pdk_section": pdk_cfg.sections["ngspice"],
+        "ref_device": pdk_cfg.ref_devices["ngspice"],
+    }
+    digest = hashlib.sha256(
+        json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if (
+        not force
+        and marker.is_file()
+        and ref_csv.is_file()
+        and fp_path.is_file()
+        and json.loads(fp_path.read_text()).get("digest") == digest
+    ):
+        return (pdk, analysis), ref_csv
+
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_spiceinit(ref_dir)
+    raw = ref_dir / "ref_out.txt"
+    net = ref_dir / "ref.spice"
+    write_bsim_ref_ngspice(
+        path=net,
+        title=f"golden BSIM {pdk} {analysis}",
+        pdk=pdk_cfg,
+        analysis=analysis,
+        analysis_params=suite.analysis_defaults[analysis],
+        out_txt=raw.resolve(),
+    )
+    sim = run_simulator(
+        simulator="ngspice",
+        netlist=net,
+        cwd=ref_dir,
+        log_path=ref_dir / "run.log",
+    )
+    if sim.returncode != 0:
+        raise RuntimeError(
+            f"golden BSIM capture failed for {pdk}/{analysis}; "
+            f"see {ref_dir / 'run.log'}"
+        )
+    export_ngspice_waveform(
+        analysis=analysis,
+        raw_path=raw,
+        csv_path=ref_csv,
+    )
+    fp_path.write_text(
+        json.dumps({"digest": digest, **digest_payload}, indent=2) + "\n"
+    )
+    marker.write_text("ok\n")
+    (ref_dir / "metrics_meta.json").write_text(
+        json.dumps(
+            {
+                "runtime_s": sim.runtime_s,
+                "peak_rss_kb": sim.peak_rss_kb,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    return (pdk, analysis), ref_csv
+
+
 def capture_golden_refs(
     *,
     suite: SuiteConfig,
@@ -131,80 +210,31 @@ def capture_golden_refs(
     pdks: Sequence[str],
     analyses: Sequence[str],
     force: bool = False,
+    jobs: int = 1,
 ) -> dict[tuple[str, str], Path]:
     """Capture ngspice PDK-BSIM reference waveforms under ``golden/<pdk>/ref/``."""
-    out: dict[tuple[str, str], Path] = {}
-    for pdk in pdks:
-        pdk_cfg = suite.pdks[pdk]
-        for analysis in analyses:
-            ref_dir = results_dir / "golden" / pdk / "ref" / analysis
-            ref_csv = ref_dir / "ref.csv"
-            marker = ref_dir / "SUCCESS"
-            fp_path = ref_dir / "fingerprint.json"
-            digest_payload = {
-                "suite_version": suite.suite_version,
-                "pdk": pdk,
-                "analysis": analysis,
-                "analysis_params": suite.analysis_defaults[analysis],
-                "pdk_section": pdk_cfg.sections["ngspice"],
-                "ref_device": pdk_cfg.ref_devices["ngspice"],
-            }
-            digest = hashlib.sha256(
-                json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest()
-            if (
-                not force
-                and marker.is_file()
-                and ref_csv.is_file()
-                and fp_path.is_file()
-                and json.loads(fp_path.read_text()).get("digest") == digest
-            ):
-                out[(pdk, analysis)] = ref_csv
-                continue
+    if jobs < 1:
+        raise ValueError(f"jobs must be >= 1, got {jobs}")
+    tasks = [(pdk, analysis) for pdk in pdks for analysis in analyses]
+    if not tasks:
+        return {}
 
-            ref_dir.mkdir(parents=True, exist_ok=True)
-            _ensure_spiceinit(ref_dir)
-            raw = ref_dir / "ref_out.txt"
-            net = ref_dir / "ref.spice"
-            write_bsim_ref_ngspice(
-                path=net,
-                title=f"golden BSIM {pdk} {analysis}",
-                pdk=pdk_cfg,
+    out: dict[tuple[str, str], Path] = {}
+    with ThreadPoolExecutor(max_workers=min(jobs, len(tasks))) as pool:
+        futures = {
+            pool.submit(
+                _capture_one_golden_ref,
+                suite=suite,
+                results_dir=results_dir,
+                pdk=pdk,
                 analysis=analysis,
-                analysis_params=suite.analysis_defaults[analysis],
-                out_txt=raw.resolve(),
-            )
-            sim = run_simulator(
-                simulator="ngspice",
-                netlist=net,
-                cwd=ref_dir,
-                log_path=ref_dir / "run.log",
-            )
-            if sim.returncode != 0:
-                raise RuntimeError(
-                    f"golden BSIM capture failed for {pdk}/{analysis}; "
-                    f"see {ref_dir / 'run.log'}"
-                )
-            export_ngspice_waveform(
-                analysis=analysis,
-                raw_path=raw,
-                csv_path=ref_csv,
-            )
-            fp_path.write_text(
-                json.dumps({"digest": digest, **digest_payload}, indent=2) + "\n"
-            )
-            marker.write_text("ok\n")
-            (ref_dir / "metrics_meta.json").write_text(
-                json.dumps(
-                    {
-                        "runtime_s": sim.runtime_s,
-                        "peak_rss_kb": sim.peak_rss_kb,
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-            out[(pdk, analysis)] = ref_csv
+                force=force,
+            ): (pdk, analysis)
+            for pdk, analysis in tasks
+        }
+        for fut in as_completed(futures):
+            key, ref_csv = fut.result()
+            out[key] = ref_csv
     return out
 
 
@@ -482,6 +512,7 @@ def run_eval_suite(
         pdks=pdks,
         analyses=selected_analyses,
         force=force,
+        jobs=jobs,
     )
 
     planned: list[

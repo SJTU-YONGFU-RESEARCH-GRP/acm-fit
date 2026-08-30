@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "End-to-end compact model fitting on open PDK and PTM goldens"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "Apache-2.0" }
+license = { text = "CC-BY-4.0" }
 dependencies = [
   "numpy>=1.23",
   "scipy>=1.10",

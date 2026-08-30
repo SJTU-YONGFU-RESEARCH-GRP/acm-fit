@@ -1,0 +1,17 @@
+{
+  "pdk": "ptm65",
+  "vdd": 1.2,
+  "width_m": 1.5e-06,
+  "length_m": 6.5e-08,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.06,
+    0.6,
+    1.2
+  ],
+  "n_points_per_curve": 25,
+  "source": "pdk_bsim_ngspice",
+  "role": "golden_iv_for_acm_dc_fit"
+}

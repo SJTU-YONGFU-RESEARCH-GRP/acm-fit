@@ -10,15 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install ngspice
         run: sudo apt-get update && sudo apt-get install -y ngspice
-
-      - name: Clone PTM corpus
-        run: |
-          git clone --depth 1 \
-            https://github.com/SJTU-YONGFU-RESEARCH-GRP/spice_model_collections.git \
-            vendor/spice_model_collections
 
       - name: Python deps
         run: pip install -r requirements.txt

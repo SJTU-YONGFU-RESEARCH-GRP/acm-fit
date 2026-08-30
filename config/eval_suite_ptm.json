@@ -1,0 +1,118 @@
+{
+  "suite_version": 5,
+  "description": "PTM BSIM4 eval goldens (matches golden_suite_ptm fit targets).",
+  "default_analyses": ["dc", "ac", "noise", "transient", "temp"],
+  "default_simulators": ["ngspice"],
+  "analysis_defaults": {
+    "dc": {
+      "vg_start": 0.0,
+      "vg_step": 0.05
+    },
+    "ac": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "noise": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "transient": {
+      "v_low": 0.0,
+      "t_rise": 1.0e-9,
+      "t_fall": 1.0e-9,
+      "t_pulse": 50.0e-9,
+      "t_period": 100.0e-9,
+      "t_stop": 200.0e-9,
+      "t_step": 0.2e-9
+    },
+    "temp": {
+      "vgs": 0.9,
+      "temps_c": [0.0, 27.0, 85.0, 125.0]
+    }
+  },
+  "pdks": {
+    "ptm180": {
+      "vdd": 1.8,
+      "width": "3u",
+      "length": "0.18u",
+      "width_m": 3.0e-6,
+      "length_m": 1.8e-7,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/180nm_bulk.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=0.18u w=3u"
+      }
+    },
+    "ptm130": {
+      "vdd": 1.5,
+      "width": "2.5u",
+      "length": "0.13u",
+      "width_m": 2.5e-6,
+      "length_m": 1.3e-7,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/130nm_bulk.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=0.13u w=2.5u"
+      }
+    },
+    "ptm90": {
+      "vdd": 1.2,
+      "width": "2u",
+      "length": "90n",
+      "width_m": 2.0e-6,
+      "length_m": 9.0e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/90nm_bulk.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=90n w=2u"
+      }
+    },
+    "ptm65": {
+      "vdd": 1.2,
+      "width": "1.5u",
+      "length": "65n",
+      "width_m": 1.5e-6,
+      "length_m": 6.5e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/65nm_bulk.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=65n w=1.5u"
+      }
+    },
+    "ptm45": {
+      "vdd": 1.1,
+      "width": "1u",
+      "length": "45n",
+      "width_m": 1.0e-6,
+      "length_m": 4.5e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/45nm_LP.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=45n w=1u"
+      }
+    },
+    "ptm32": {
+      "vdd": 1.0,
+      "width": "1u",
+      "length": "32n",
+      "width_m": 1.0e-6,
+      "length_m": 3.2e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/32nm_LP.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=32n w=1u"
+      }
+    },
+    "ptm22": {
+      "vdd": 0.95,
+      "width": "0.8u",
+      "length": "22n",
+      "width_m": 8.0e-7,
+      "length_m": 2.2e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/22nm_LP.pm\"",
+      "ref_device": {
+        "ngspice": "m1 d1 g1 s1 b1 nmos l=22n w=0.8u"
+      }
+    }
+  }
+}

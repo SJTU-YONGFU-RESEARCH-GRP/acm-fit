@@ -1,0 +1,17 @@
+{
+  "digest": "bede8df9d37e01783e1bd9aa7ce847b220d6962f949ce84b07dbce6573cebcd1",
+  "suite_version": 5,
+  "pdk": "gf180mcu_typical",
+  "analysis": "transient",
+  "analysis_params": {
+    "v_low": 0.0,
+    "t_rise": 1e-09,
+    "t_fall": 1e-09,
+    "t_pulse": 5e-08,
+    "t_period": 1e-07,
+    "t_stop": 2e-07,
+    "t_step": 2e-10
+  },
+  "pdk_section": ".include \"/home/yongfu/proj/spice_modeling/work/globalfoundries-pdk-libs-gf180mcu_fd_pr/models/ngspice/design.ngspice\"\n.lib \"/home/yongfu/proj/spice_modeling/work/globalfoundries-pdk-libs-gf180mcu_fd_pr/models/ngspice/sm141064.ngspice\" typical",
+  "ref_device": "X1 d1 g1 s1 b1 nfet_03v3 w=5u l=0.3u"
+}

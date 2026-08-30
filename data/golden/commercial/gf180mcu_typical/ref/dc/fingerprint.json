@@ -1,0 +1,12 @@
+{
+  "digest": "3a7cebd24a8cc6d5bfc4dde1848bd96f3cd7992e0bf2fb5c5006b6b7c6ff3e8d",
+  "suite_version": 5,
+  "pdk": "gf180mcu_typical",
+  "analysis": "dc",
+  "analysis_params": {
+    "vg_start": 0.0,
+    "vg_step": 0.05
+  },
+  "pdk_section": ".include \"/home/yongfu/proj/spice_modeling/work/globalfoundries-pdk-libs-gf180mcu_fd_pr/models/ngspice/design.ngspice\"\n.lib \"/home/yongfu/proj/spice_modeling/work/globalfoundries-pdk-libs-gf180mcu_fd_pr/models/ngspice/sm141064.ngspice\" typical",
+  "ref_device": "X1 d1 g1 s1 b1 nfet_03v3 w=5u l=0.3u"
+}

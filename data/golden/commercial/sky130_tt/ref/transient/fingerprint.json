@@ -1,0 +1,17 @@
+{
+  "digest": "bbcc26d8cd3bddb93a4c98193281df41c4112deed9869e8d288ee3d2a0f5afa0",
+  "suite_version": 5,
+  "pdk": "sky130_tt",
+  "analysis": "transient",
+  "analysis_params": {
+    "v_low": 0.0,
+    "t_rise": 1e-09,
+    "t_fall": 1e-09,
+    "t_pulse": 5e-08,
+    "t_period": 1e-07,
+    "t_stop": 2e-07,
+    "t_step": 2e-10
+  },
+  "pdk_section": ".lib \"/home/yongfu/.ciel/ciel/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.tech/ngspice/sky130.lib.spice\" tt",
+  "ref_device": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3"
+}
