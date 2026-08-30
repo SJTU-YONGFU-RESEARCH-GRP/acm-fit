@@ -1,0 +1,77 @@
+{
+  "suite_version": 3,
+  "description": "Foundry open-PDK BSIM Id-Vg goldens with typical and corner process points.",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_fractions": [0.05, 0.5, 1.0],
+  "fit_models": ["acm5"],
+  "predict_analyses": ["dc", "ac", "noise", "transient", "temp"],
+  "predict_simulators": ["ngspice"],
+  "fit_loss": {
+    "id_mode": "absolute",
+    "weight_linear": 0.4,
+    "weight_log": 0.6,
+    "huber_delta": 1.0e-4,
+    "region_vt_width_v": 0.0,
+    "region_vt_boost": 2.0,
+    "weight_dc": 1.0,
+    "weight_ac": 0.0,
+    "weight_noise": 0.0,
+    "weight_temp": 0.0,
+    "optuna_trials": 40,
+    "refine_starts": 3,
+    "refine_maxiter": 15
+  },
+  "analysis_defaults": {
+    "ac": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "noise": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    }
+  },
+  "targets": {
+    "sky130": {
+      "vdd": 1.8,
+      "width_m": 3.0e-6,
+      "length_m": 2.5e-7,
+      "ref_device": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3",
+      "corners": {
+        "tt": {
+          "ngspice_section": ".lib \"${SKY130_LIB}\" tt"
+        },
+        "ss": {
+          "ngspice_section": ".lib \"${SKY130_LIB}\" ss"
+        },
+        "ff": {
+          "ngspice_section": ".lib \"${SKY130_LIB}\" ff"
+        }
+      }
+    },
+    "gf180mcu": {
+      "vdd": 3.3,
+      "width_m": 5.0e-6,
+      "length_m": 3.0e-7,
+      "ref_device": "X1 d1 g1 s1 b1 nfet_03v3 w=5u l=0.3u",
+      "corners": {
+        "typical": {
+          "ngspice_section": ".include \"${GF180_MODELS_DIR}/design.ngspice\"\n.lib \"${GF180_MODELS_DIR}/sm141064.ngspice\" typical"
+        },
+        "ss": {
+          "ngspice_section": ".include \"${GF180_MODELS_DIR}/design.ngspice\"\n.lib \"${GF180_MODELS_DIR}/sm141064.ngspice\" ss"
+        },
+        "ff": {
+          "ngspice_section": ".include \"${GF180_MODELS_DIR}/design.ngspice\"\n.lib \"${GF180_MODELS_DIR}/sm141064.ngspice\" ff"
+        }
+      }
+    }
+  }
+}

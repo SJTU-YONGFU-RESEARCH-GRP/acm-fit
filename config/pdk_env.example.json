@@ -1,0 +1,8 @@
+{
+  "description": "Copy to pdk_env.local.json and set absolute paths for your machine.",
+  "env": {
+    "SKY130_LIB": "/path/to/sky130A/libs.tech/ngspice/sky130.lib.spice",
+    "GF180_MODELS_DIR": "/path/to/gf180mcu_fd_pr/models/ngspice",
+    "SMC_ROOT": "vendor/spice_model_collections"
+  }
+}

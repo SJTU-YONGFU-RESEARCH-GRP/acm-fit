@@ -1,0 +1,62 @@
+{
+  "suite_version": 5,
+  "default_analyses": ["dc", "ac", "noise", "transient", "temp"],
+  "default_simulators": ["ngspice"],
+  "analysis_defaults": {
+    "dc": {
+      "vg_start": 0.0,
+      "vg_step": 0.05
+    },
+    "ac": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "noise": {
+      "vgs": 0.9,
+      "f_start": 1.0e3,
+      "f_stop": 1.0e9,
+      "points_per_decade": 10,
+      "rd_ohm": 1000.0
+    },
+    "transient": {
+      "v_low": 0.0,
+      "t_rise": 1.0e-9,
+      "t_fall": 1.0e-9,
+      "t_pulse": 50.0e-9,
+      "t_period": 100.0e-9,
+      "t_stop": 200.0e-9,
+      "t_step": 0.2e-9
+    },
+    "temp": {
+      "vgs": 0.9,
+      "temps_c": [0.0, 27.0, 85.0, 125.0]
+    }
+  },
+  "pdks": {
+    "sky130_tt": {
+      "vdd": 1.8,
+      "width": "3u",
+      "length": "0.25u",
+      "width_m": 3.0e-6,
+      "length_m": 2.5e-7,
+      "ngspice_section": ".lib \"${SKY130_LIB}\" tt",
+      "ref_device": {
+        "ngspice": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3"
+      }
+    },
+    "gf180mcu_typical": {
+      "vdd": 3.3,
+      "width": "5u",
+      "length": "0.3u",
+      "width_m": 5.0e-6,
+      "length_m": 3.0e-7,
+      "ngspice_section": ".include \"${GF180_MODELS_DIR}/design.ngspice\"\n.lib \"${GF180_MODELS_DIR}/sm141064.ngspice\" typical",
+      "ref_device": {
+        "ngspice": "X1 d1 g1 s1 b1 nfet_03v3 w=5u l=0.3u"
+      }
+    }
+  }
+}

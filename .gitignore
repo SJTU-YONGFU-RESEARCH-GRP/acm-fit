@@ -1,0 +1,13 @@
+# acm-fit LASCAS open release
+
+work/
+results/*/
+!results/.gitkeep
+config/pdk_env.local.json
+vendor/spice_model_collections
+vendor/spice_model_collections/
+__pycache__/
+*.pyc
+*.log
+.pytest_cache/
+.venv/

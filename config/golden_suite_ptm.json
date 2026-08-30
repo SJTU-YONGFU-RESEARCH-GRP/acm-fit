@@ -1,0 +1,76 @@
+{
+  "suite_version": 3,
+  "description": "PTM BSIM4 goldens (spice_model_collections) for ngspice-only technology scaling.",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_fractions": [0.05, 0.5, 1.0],
+  "fit_models": ["acm5"],
+  "predict_analyses": ["dc"],
+  "predict_simulators": ["ngspice"],
+  "fit_loss": {
+    "id_mode": "absolute",
+    "weight_linear": 0.4,
+    "weight_log": 0.6,
+    "huber_delta": 1.0e-4,
+    "region_vt_width_v": 0.0,
+    "region_vt_boost": 2.0,
+    "weight_dc": 1.0,
+    "weight_ac": 0.0,
+    "weight_noise": 0.0,
+    "weight_temp": 0.0,
+    "optuna_trials": 40,
+    "refine_starts": 3,
+    "refine_maxiter": 15
+  },
+  "targets": {
+    "ptm180": {
+      "vdd": 1.8,
+      "width_m": 3.0e-6,
+      "length_m": 1.8e-7,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/180nm_bulk.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=0.18u w=3u"
+    },
+    "ptm130": {
+      "vdd": 1.5,
+      "width_m": 2.5e-6,
+      "length_m": 1.3e-7,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/130nm_bulk.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=0.13u w=2.5u"
+    },
+    "ptm90": {
+      "vdd": 1.2,
+      "width_m": 2.0e-6,
+      "length_m": 9.0e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/90nm_bulk.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=90n w=2u"
+    },
+    "ptm65": {
+      "vdd": 1.2,
+      "width_m": 1.5e-6,
+      "length_m": 6.5e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/65nm_bulk.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=65n w=1.5u"
+    },
+    "ptm45": {
+      "vdd": 1.1,
+      "width_m": 1.0e-6,
+      "length_m": 4.5e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/45nm_LP.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=45n w=1u"
+    },
+    "ptm32": {
+      "vdd": 1.0,
+      "width_m": 1.0e-6,
+      "length_m": 3.2e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/32nm_LP.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=32n w=1u"
+    },
+    "ptm22": {
+      "vdd": 0.95,
+      "width_m": 8.0e-7,
+      "length_m": 2.2e-8,
+      "ngspice_section": ".include \"${SMC_ROOT}/ptm/22nm_LP.pm\"",
+      "ref_device": "m1 d1 g1 s1 b1 nmos l=22n w=0.8u"
+    }
+  }
+}
