@@ -1,0 +1,20 @@
+{
+  "pdk": "custom_sky130_ss",
+  "vdd": 1.8,
+  "width_m": 3e-06,
+  "length_m": 2.5e-07,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.09000000000000001,
+    0.9,
+    1.8
+  ],
+  "n_points_per_curve": 37,
+  "source": "robustness_sky130_slow_corner",
+  "role": "golden_iv_for_acm_dc_fit",
+  "base_pdk": "sky130",
+  "corner": "ss",
+  "robustness_note": "Foundry slow corner (sky130 ss)"
+}

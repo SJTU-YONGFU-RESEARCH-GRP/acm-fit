@@ -1,6 +1,5 @@
-# Bring your own golden data (Id–Vg)
-
-Fit ACM models against **your** reference curves without running BSIM capture.
+Full guide: [README.md — Bring your own Id–Vg data](README.md#bring-your-own-idvg-data).
+Extended reference: this file.
 
 ## Quick path (3 steps)
 
@@ -9,7 +8,7 @@ Fit ACM models against **your** reference curves without running BSIM capture.
 **Option A — convert generic CSV files** (any `vg` / `id` column headers):
 
 ```bash
-python3 scripts/convert_csv_golden.py \
+bash scripts/convert_csv_golden.sh \
   --out data/golden/custom/my_chip_tt \
   --pdk my_chip_tt --vdd 1.8 --width-m 3e-6 --length-m 180e-9 \
   --curve 0.09:imports/idvg_low_vds.csv \
@@ -40,7 +39,7 @@ vg,id_ref
 Use the scaffold helper to create `meta.json` and see expected filenames:
 
 ```bash
-python3 scripts/scaffold_golden_target.py \
+bash scripts/scaffold_golden_target.sh \
   --out data/golden/custom/my_chip_tt \
   --pdk my_chip_tt \
   --vdd 1.8 \
@@ -48,7 +47,7 @@ python3 scripts/scaffold_golden_target.py \
   --length-m 180e-9 \
   --vds 0.09,0.9,1.8
 # copy your CSVs into that directory, then:
-PYTHONPATH=src python3 scripts/validate_golden.py data/golden/custom/my_chip_tt
+bash scripts/validate_golden.sh data/golden/custom/my_chip_tt
 ```
 
 Copy `config/golden_suite_custom.example.json` → `config/golden_suite_custom.json` and add a `data_only` target for each folder name:
@@ -71,7 +70,7 @@ Copy `config/golden_suite_custom.example.json` → `config/golden_suite_custom.j
 cp config/golden_suite_custom.example.json config/golden_suite_custom.json
 # edit targets in config/golden_suite_custom.json if needed
 
-bash scripts/run_all.sh custom
+bash scripts/run_all.sh custom --golden-from data/golden/custom
 ```
 
 This imports `data/golden/custom/` → `results/custom/`, fits ACM-5, and writes reports. Eval is skipped (no BSIM reference for arbitrary user data).
@@ -120,15 +119,13 @@ The fitted ACM card is always used to **predict** DC/AC/noise/temperature/transi
 
 ## Example in this repo
 
-`data/examples/demo_nmos/` — minimal valid layout (copied from PTM 180 nm golden). Try:
+See **[data/examples/README.md](examples/README.md)** — eight robustness targets (1/2/3 Vds, sparse Vg, PTM 22 nm, sky130 corners, GF180).
 
 ```bash
-PYTHONPATH=src python3 scripts/validate_golden.py data/examples/demo_nmos
+bash scripts/build_custom_examples.sh   # regenerate from frozen goldens
+bash scripts/validate_golden.sh data/examples/custom_3vds_std
 
-# Quick end-to-end (copy example into custom lane)
-mkdir -p data/golden/custom
-cp -r data/examples/demo_nmos data/golden/custom/
-cp config/golden_suite_custom.example.json config/golden_suite_custom.json
+# Full robustness matrix (default custom lane → results/custom/)
 bash scripts/run_all.sh custom
 ```
 

@@ -43,5 +43,5 @@ jobs:
           }
           EOF
 
-      - name: Smoke pipeline
+      - name: Custom lane smoke (8 examples, fit-only)
         run: bash scripts/run_smoke.sh

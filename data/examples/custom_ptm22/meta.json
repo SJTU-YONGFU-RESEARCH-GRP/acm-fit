@@ -1,0 +1,18 @@
+{
+  "pdk": "custom_ptm22",
+  "vdd": 0.95,
+  "width_m": 8e-07,
+  "length_m": 2.2e-08,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.0475,
+    0.475,
+    0.95
+  ],
+  "n_points_per_curve": 20,
+  "source": "robustness_ptm22_short_channel",
+  "role": "golden_iv_for_acm_dc_fit",
+  "robustness_note": "22 nm node, 0.95 V supply"
+}

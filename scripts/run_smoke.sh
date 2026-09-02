@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
-# Fast CI / release validation: single PTM node, minimal fit iterations.
+# Fast CI / release validation: full custom robustness matrix (8 targets),
+# reduced fit iterations, no predict benches. Output: results/custom/
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RELEASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${SCRIPT_DIR}/load_pdk_env.sh"
-# shellcheck disable=SC1091
-source "${SCRIPT_DIR}/_acm_env.sh"
-bash "${SCRIPT_DIR}/setup_env.sh"
-
-bash "${SCRIPT_DIR}/run_golden_pipeline.sh" \
-    --config "${RELEASE_ROOT}/config/golden_suite_smoke.json" \
-    --results-dir "${RELEASE_ROOT}/results/smoke" \
-    --openvaf-binary "${RELEASE_ROOT}/work/openvaf-r" \
+bash "${SCRIPT_DIR}/run_all.sh" custom \
     --iterations 5 \
-    --jobs 1 \
-    --simulators ngspice
+    --skip-predict \
+    --jobs 2 \
+    --fit-strategy optuna
 
-echo "Smoke OK — see ${RELEASE_ROOT}/results/smoke/SUMMARY.md"
+echo "Smoke OK — see $(cd "${SCRIPT_DIR}/.." && pwd)/results/custom/SUMMARY.md"
+echo "Note: production default is staged_optuna (see fit_engine in config/golden_suite_*.json)."

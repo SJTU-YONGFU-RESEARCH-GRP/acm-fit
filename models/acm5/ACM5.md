@@ -149,13 +149,7 @@ An associated bias quantity used in \(g_m\) / charge formulas is \(q_{I,\mathrm{
 
 ## Plots and analysis
 
-Figures use the same charge/current core as the upstream ACM2 Verilog-A (demo card). Regenerate with:
-
-```bash
-python3 scripts/plot_acm_physics.py
-```
-
-Outputs: [`figs/`](figs/). ACM-4 companion plots: [`../acm4/ACM4.md`](../acm4/ACM4.md).
+Figures use the same charge/current core as the upstream ACM2 Verilog-A (demo card). Pre-built outputs live in [`figs/`](figs/). ACM-4 companion plots: [`../acm4/ACM4.md`](../acm4/ACM4.md).
 
 ### Velocity sat flattens \(I_{D\mathrm{sat}}\)
 
@@ -241,5 +235,5 @@ See [`results/acm5/REPORT.md`](../../results/acm5/REPORT.md) and [`results/SUMMA
 See also: [`../acm4/ACM4.md`](../acm4/ACM4.md), [`../acm4c/ACM4c.md`](../acm4c/ACM4c.md).
 
 ```bash
-python3 scripts/run_golden_pipeline.py --iterations 25 --jobs 4
+bash scripts/run_golden_pipeline.sh --iterations 1000 --jobs 4
 ```

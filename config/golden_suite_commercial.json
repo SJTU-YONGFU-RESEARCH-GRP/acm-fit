@@ -18,9 +18,22 @@
     "weight_ac": 0.0,
     "weight_noise": 0.0,
     "weight_temp": 0.0,
-    "optuna_trials": 40,
+    "optuna_trials": 1000,
     "refine_starts": 3,
     "refine_maxiter": 15
+  },
+  "fit_engine": {
+    "strategy": "staged_optuna",
+    "strategies": ["optuna", "staged", "staged_optuna"],
+    "fit_profile": "acm5_staged",
+    "optuna_box_fraction": 0.2,
+    "warm_start": {
+      "mode": "parent_corner",
+      "corner_order": {
+        "sky130": ["tt", "ss", "ff"],
+        "gf180mcu": ["typical", "ss", "ff"]
+      }
+    }
   },
   "analysis_defaults": {
     "ac": {

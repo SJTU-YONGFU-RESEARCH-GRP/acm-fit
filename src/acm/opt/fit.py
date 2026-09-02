@@ -6,7 +6,6 @@ import csv
 import json
 import re
 import subprocess
-import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,16 +13,33 @@ from typing import Any, Mapping, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
-import optuna
-from optuna.samplers import TPESampler
-from scipy.optimize import minimize
+
+from acm.plot_style import (
+    COLOR_PRIMARY,
+    COLOR_REFERENCE,
+    COLOR_SECONDARY,
+    COLOR_TRIAL,
+    FIGSIZE_COMBINED,
+    FIGSIZE_IDVG_ROW,
+    FIGSIZE_STANDARD,
+    LEGEND_SIZE,
+    LINEWIDTH_MAIN,
+    LINEWIDTH_SECONDARY,
+    TITLE_SIZE,
+    apply_style,
+    ensure_rcparams,
+    save_figure,
+    series_color,
+    set_axis_labels,
+)
 
 from acm.eval.export import export_ngspice_waveform
 from acm.eval.metrics import compare_to_golden
 from acm.eval.netlists import format_instance_params, write_acm_ngspice
 from acm.eval.config import PdkEvalConfig
 from acm.eval.waveforms import load_xy_csv
-from acm.golden import GoldenDevice
+from acm.golden import GoldenCurve, GoldenDevice
+from acm.opt.engine import FitEnginePolicy, fit_engine_from_mapping
 from acm.opt.loss import (
     LossPolicy,
     composite_objective,
@@ -40,7 +56,6 @@ from acm.opt.params import (
     validate_dc_fit_policy,
 )
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
 _TIME_RE = re.compile(r"^ACM_TIME\s+([0-9.eE+-]+)\s+(\d+)\s*$", re.MULTILINE)
 
 
@@ -73,6 +88,8 @@ class FitResult:
     rmse_noise: float | None = None
     rmse_temp: float | None = None
     dc_loss: float | None = None
+    fit_strategy: str | None = None
+    fit_profile: str | None = None
 
 
 @dataclass(frozen=True)
@@ -159,20 +176,24 @@ wrdata {out} abs(i(VS1))
 .end
 """
     )
-    proc = subprocess.run(
-        [
-            "/usr/bin/time",
-            "-f",
-            "ACM_TIME %e %M",
-            "ngspice",
-            "-b",
-            str(netlist.resolve()),
-        ],
-        cwd=str(work_dir),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                "/usr/bin/time",
+                "-f",
+                "ACM_TIME %e %M",
+                "ngspice",
+                "-b",
+                str(netlist.resolve()),
+            ],
+            cwd=str(work_dir),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ACM sim timed out after 120s: {netlist}") from exc
     text = (proc.stdout or "") + "\n" + (proc.stderr or "")
     netlist.with_suffix(".log").write_text(text)
     match = _TIME_RE.search(text)
@@ -226,20 +247,24 @@ def _run_acm_analysis_csv(
         vdd=golden.vdd,
         out_txt=raw.resolve(),
     )
-    proc = subprocess.run(
-        [
-            "/usr/bin/time",
-            "-f",
-            "ACM_TIME %e %M",
-            "ngspice",
-            "-b",
-            str(net.resolve()),
-        ],
-        cwd=str(work_dir),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                "/usr/bin/time",
+                "-f",
+                "ACM_TIME %e %M",
+                "ngspice",
+                "-b",
+                str(net.resolve()),
+            ],
+            cwd=str(work_dir),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ACM {analysis} sim timed out after 120s: {net}") from exc
     text = (proc.stdout or "") + "\n" + (proc.stderr or "")
     (work_dir / f"{analysis}_{tag}.log").write_text(text)
     match = _TIME_RE.search(text)
@@ -324,6 +349,7 @@ def _score_params(
     policy: LossPolicy,
     work_dir: Path,
     dyn: _DynBenchRefs | None,
+    curves: Sequence[GoldenCurve] | None = None,
 ) -> tuple[float, float, float, float, float | None, float | None, float | None, int]:
     """Score one parameter set.
 
@@ -337,7 +363,10 @@ def _score_params(
     log_errs: list[float] = []
     dc_errs: list[float] = []
     peak_rss = 0
-    for curve in golden.curves:
+    active_curves = golden.curves if curves is None else tuple(curves)
+    if not active_curves:
+        raise ValueError(f"no curves to score for {golden.pdk}")
+    for curve in active_curves:
         vg_acm, id_acm, _, rss = _run_acm_idvg(
             model=model,
             params=params,
@@ -465,14 +494,22 @@ def fit_model_to_golden(
     iterations: int | None = None,
     weight_linear: float | None = None,
     weight_log: float | None = None,
+    engine: FitEnginePolicy | Mapping[str, Any] | None = None,
+    init_params: Mapping[str, float] | None = None,
+    repo_root: Path | None = None,
+    strategy_jobs: int = 1,
 ) -> FitResult:
-    """Optuna (+ multi-start L-BFGS-B) fit of one ACM model to golden data.
+    """Fit one ACM model to golden Id–Vg data using the configured search engine.
 
     Args:
-        policy: Loss / optimizer policy. If ``weight_linear`` / ``weight_log``
-            are passed (legacy), they override the corresponding policy fields.
-        iterations: Optional override for ``policy.optuna_trials``.
+        policy: Loss objective (DC residual weights, huber, etc.).
+        engine: Search strategy policy. Defaults to ``staged_optuna``.
+        init_params: Optional warm-start values for ``model.free_params``.
+        iterations: Optional override for Optuna trial count.
     """
+    from acm.opt.benchmark import run_fit_benchmark
+    from acm.opt.strategies import FitSession, run_single_strategy
+
     if not model.osdi_path.is_file():
         raise FileNotFoundError(f"missing OSDI: {model.osdi_path}")
     validate_dc_fit_params(model)
@@ -488,130 +525,68 @@ def fit_model_to_golden(
         policy = loss_policy_from_mapping(
             {**policy.to_dict(), "optuna_trials": int(iterations)}
         )
+    if engine is None:
+        fit_engine = FitEnginePolicy()
+    elif isinstance(engine, FitEnginePolicy):
+        fit_engine = engine
+    else:
+        fit_engine = fit_engine_from_mapping(engine)
 
-    dyn: _DynBenchRefs | None = None
-    # Golden fit is DC-only; dyn benches are not loaded.
+    if repo_root is None and results_dir is not None:
+        repo_root = results_dir.parent.parent
+    if repo_root is None:
+        raise ValueError("fit_model_to_golden requires repo_root or results_dir")
 
     bounds = _bounds(golden.width_m, model)
-    free_names = model.free_params
     work_dir.mkdir(parents=True, exist_ok=True)
-    n_evals = 0
-    peak_rss = 0
-    history: list[FitHistoryPoint] = []
-    t0 = time.perf_counter()
-
-    def score(free: Mapping[str, float], phase: str) -> float:
-        nonlocal n_evals, peak_rss
-        obj, _, _, _, _, _, _, rss = _score_params(
-            model,
-            free,
-            golden,
-            vg_start=vg_start,
-            vg_step=vg_step,
-            policy=policy,
-            work_dir=work_dir / phase,
-            dyn=dyn,
-        )
-        n_evals += 1
-        peak_rss = max(peak_rss, rss)
-        _append_history(history, weighted_error=obj, phase=phase)
-        return obj
-
-    def objective(trial: optuna.Trial) -> float:
-        free: dict[str, float] = {}
-        for name in free_names:
-            lo, hi = bounds[name]
-            free[name] = trial.suggest_float(
-                name,
-                lo,
-                hi,
-                log=name in LOG_SCALE_PARAMS,
-            )
-        return score(free, "optuna")
-
-    study = optuna.create_study(
-        direction="minimize",
-        sampler=TPESampler(seed=seed + len(free_names)),
-    )
-    study.optimize(objective, n_trials=policy.optuna_trials, show_progress_bar=False)
-
-    starts: list[dict[str, float]] = []
-    seen: set[tuple[float, ...]] = set()
-    for trial in sorted(study.trials, key=lambda t: float(t.value if t.value is not None else 1e300)):
-        if trial.value is None:
-            continue
-        free = {name: float(trial.params[name]) for name in free_names}
-        key = tuple(round(free[n], 12) for n in free_names)
-        if key in seen:
-            continue
-        seen.add(key)
-        starts.append(free)
-        if len(starts) >= max(1, policy.refine_starts):
-            break
-    if not starts:
-        starts = [{name: float(study.best_trial.params[name]) for name in free_names}]
-
-    free_best = dict(starts[0])
-    best_obj = float("inf")
-
-    if refine and policy.refine_starts > 0:
-        box = [(bounds[n][0], bounds[n][1]) for n in free_names]
-        for start in starts:
-            x0 = np.array([start[n] for n in free_names], dtype=float)
-
-            def local_obj(x: np.ndarray) -> float:
-                free = {n: float(v) for n, v in zip(free_names, x)}
-                return score(free, "refine")
-
-            result = minimize(
-                local_obj,
-                x0=x0,
-                method="L-BFGS-B",
-                bounds=box,
-                options={
-                    "maxiter": policy.refine_maxiter,
-                    "ftol": 1e-6,
-                    "eps": 1e-3,
-                },
-            )
-            cand = {n: float(v) for n, v in zip(free_names, result.x)}
-            obj = score(cand, "refine_pick")
-            if obj < best_obj:
-                best_obj = obj
-                free_best = cand
-    else:
-        free_best = {name: float(study.best_trial.params[name]) for name in free_names}
-
-    obj, lin, log, dc_loss, rmse_ac, rmse_noise, rmse_temp, rss = _score_params(
-        model,
-        free_best,
-        golden,
+    session = FitSession(
+        model=model,
+        golden=golden,
+        work_dir=work_dir,
+        seed=seed,
         vg_start=vg_start,
         vg_step=vg_step,
         policy=policy,
-        work_dir=work_dir / "best",
-        dyn=dyn,
+        engine=fit_engine,
+        init_params=init_params,
+        bounds=bounds,
+        free_names=model.free_params,
     )
-    peak_rss = max(peak_rss, rss)
-    n_evals += 1
-    _append_history(history, weighted_error=obj, phase="final")
-    params = _expand_params(model, free_best, golden)
-    return FitResult(
-        pdk=golden.pdk,
-        model=model.name,
-        parameters=params,
-        weighted_error=obj,
-        rmse_linear=lin,
-        rmse_log=log,
-        fit_wall_s=time.perf_counter() - t0,
-        n_evals=n_evals,
-        peak_rss_kb=peak_rss,
-        history=tuple(history),
-        loss_policy=policy.to_dict(),
-        rmse_ac=rmse_ac,
-        rmse_noise=rmse_noise,
-        rmse_temp=rmse_temp,
-        dc_loss=dc_loss,
+
+    if fit_engine.strategy == "benchmark":
+        benchmark_dir = (
+            results_dir / "fit_benchmark" / model.name
+            if results_dir is not None
+            else work_dir / "fit_benchmark"
+        )
+        best, _all = run_fit_benchmark(
+            repo_root=repo_root,
+            model=model,
+            golden=golden,
+            work_dir=work_dir,
+            seed=seed,
+            vg_start=vg_start,
+            vg_step=vg_step,
+            policy=policy,
+            engine=fit_engine,
+            init_params=init_params,
+            benchmark_dir=benchmark_dir,
+            strategy_jobs=strategy_jobs,
+        )
+        return best
+
+    if not refine and fit_engine.strategy == "optuna":
+        return run_single_strategy(
+            session,
+            strategy="optuna",
+            repo_root=repo_root,
+            profile=None,
+        )
+    return run_single_strategy(
+        session,
+        strategy=fit_engine.strategy,
+        repo_root=repo_root,
+        profile=None,
     )
 
 
@@ -650,31 +625,27 @@ def write_error_vs_iteration_plot(
     """Plot trial error and best-so-far vs iteration for one fit."""
     if not result.history:
         raise ValueError(f"no fit history for {result.pdk}/{result.model}")
+    ensure_rcparams()
     iters = [p.iteration for p in result.history]
     trial_err = [p.weighted_error for p in result.history]
     best_err = [p.best_weighted_error for p in result.history]
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    ax.scatter(iters, trial_err, s=22, alpha=0.45, color="#7f7f7f", label="trial")
-    ax.plot(iters, best_err, color="#1f77b4", linewidth=2.0, label="best so far")
+    fig, ax = plt.subplots(figsize=FIGSIZE_STANDARD)
+    ax.scatter(iters, trial_err, s=22, alpha=0.45, color=COLOR_TRIAL, label="trial")
+    ax.plot(iters, best_err, color=COLOR_PRIMARY, linewidth=LINEWIDTH_MAIN, label="best so far")
     refine_iters = [p.iteration for p in result.history if p.phase == "refine"]
     if refine_iters:
         ax.axvline(
             min(refine_iters) - 0.5,
-            color="#d62728",
+            color=COLOR_SECONDARY,
             linestyle="--",
-            linewidth=1.0,
+            linewidth=LINEWIDTH_SECONDARY,
             label="refine start",
         )
-    ax.set_xlabel("Iteration")
-    ax.set_ylabel("Objective")
-    ax.set_title(f"{result.pdk} / {result.model}")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="best")
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+    set_axis_labels(ax, title=f"{result.pdk} / {result.model}", xlabel="Iteration", ylabel="Objective")
+    apply_style(ax)
+    ax.legend(loc="best", fontsize=LEGEND_SIZE)
+    save_figure(fig, path)
 
 
 def write_combined_error_vs_iteration_plot(
@@ -684,8 +655,8 @@ def write_combined_error_vs_iteration_plot(
     """Overlay best-so-far curves for all PDK/model fits."""
     if not results:
         raise ValueError("no fit results to plot")
-    fig, ax = plt.subplots(figsize=(8.5, 5.0))
-    cmap = plt.get_cmap("tab10")
+    ensure_rcparams()
+    fig, ax = plt.subplots(figsize=FIGSIZE_COMBINED)
     for idx, result in enumerate(results):
         if not result.history:
             raise ValueError(f"no fit history for {result.pdk}/{result.model}")
@@ -694,19 +665,19 @@ def write_combined_error_vs_iteration_plot(
         ax.plot(
             iters,
             best_err,
-            linewidth=2.0,
-            color=cmap(idx % 10),
+            linewidth=LINEWIDTH_SECONDARY,
+            color=series_color(idx),
             label=f"{result.pdk}:{result.model}",
         )
-    ax.set_xlabel("Iteration")
-    ax.set_ylabel("Best objective so far")
-    ax.set_title("Golden fit: error vs iteration")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="best")
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+    set_axis_labels(
+        ax,
+        title="Golden fit: error vs iteration",
+        xlabel="Iteration",
+        ylabel="Best objective so far",
+    )
+    apply_style(ax)
+    ax.legend(loc="best", fontsize=LEGEND_SIZE)
+    save_figure(fig, path)
 
 
 def write_idvg_fit_overlay_plot(
@@ -722,9 +693,16 @@ def write_idvg_fit_overlay_plot(
     """Plot golden vs fitted ACM Id–Vg at every VDS in the golden corpus."""
     if not golden.curves:
         raise ValueError(f"no golden curves for {golden.pdk}")
+    ensure_rcparams()
     polarity = str(golden.meta.get("polarity", "nmos"))
     n_curves = len(golden.curves)
-    fig, axes = plt.subplots(n_curves, 2, figsize=(10.0, 3.2 * n_curves), squeeze=False)
+    fig, axes = plt.subplots(
+        n_curves,
+        2,
+        figsize=(FIGSIZE_IDVG_ROW[0], FIGSIZE_IDVG_ROW[1] * n_curves),
+        squeeze=False,
+    )
+    lw = LINEWIDTH_SECONDARY
     for row_idx, curve in enumerate(golden.curves):
         vg_acm, id_acm, _, _ = _run_acm_idvg(
             model=model,
@@ -737,30 +715,59 @@ def write_idvg_fit_overlay_plot(
             polarity=polarity,
         )
         ax_lin, ax_log = axes[row_idx, 0], axes[row_idx, 1]
-        ax_lin.plot(curve.vg, curve.id_ref * 1e6, color="#4d4d4d", linewidth=2, label="Reference")
-        ax_lin.plot(vg_acm, id_acm * 1e6, color="#c41e3a", linewidth=2, linestyle="--", label="ACM fit")
-        ax_lin.set_xlabel("Vg (V)")
-        ax_lin.set_ylabel("Id (µA)")
-        ax_lin.set_title(f"Vds = {curve.vds:g} V (linear)")
-        ax_lin.grid(True, alpha=0.3)
-        ax_lin.legend(loc="best")
+        ax_lin.plot(
+            curve.vg,
+            curve.id_ref * 1e6,
+            color=COLOR_REFERENCE,
+            linewidth=lw,
+            label="Reference",
+        )
+        ax_lin.plot(
+            vg_acm,
+            id_acm * 1e6,
+            color=COLOR_SECONDARY,
+            linewidth=lw,
+            linestyle="--",
+            label="ACM fit",
+        )
+        set_axis_labels(
+            ax_lin,
+            title=f"Vds = {curve.vds:g} V (linear)",
+            xlabel="Vg (V)",
+            ylabel="Id (µA)",
+        )
+        apply_style(ax_lin)
+        ax_lin.legend(loc="best", fontsize=LEGEND_SIZE)
 
         mask_ref = curve.id_ref > 0
         mask_acm = id_acm > 0
-        ax_log.semilogy(curve.vg[mask_ref], curve.id_ref[mask_ref], color="#4d4d4d", linewidth=2, label="Reference")
-        ax_log.semilogy(vg_acm[mask_acm], id_acm[mask_acm], color="#c41e3a", linewidth=2, linestyle="--", label="ACM fit")
-        ax_log.set_xlabel("Vg (V)")
-        ax_log.set_ylabel("Id (A)")
-        ax_log.set_title(f"Vds = {curve.vds:g} V (log)")
-        ax_log.grid(True, alpha=0.3)
+        ax_log.semilogy(
+            curve.vg[mask_ref],
+            curve.id_ref[mask_ref],
+            color=COLOR_REFERENCE,
+            linewidth=lw,
+            label="Reference",
+        )
+        ax_log.semilogy(
+            vg_acm[mask_acm],
+            id_acm[mask_acm],
+            color=COLOR_SECONDARY,
+            linewidth=lw,
+            linestyle="--",
+            label="ACM fit",
+        )
+        set_axis_labels(
+            ax_log,
+            title=f"Vds = {curve.vds:g} V (log)",
+            xlabel="Vg (V)",
+            ylabel="Id (A)",
+        )
+        apply_style(ax_log)
         if row_idx == 0:
-            ax_log.legend(loc="best")
+            ax_log.legend(loc="best", fontsize=LEGEND_SIZE)
 
-    fig.suptitle(f"{golden.pdk} — Id–Vg fit overlay", fontsize=12, fontweight="bold")
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+    fig.suptitle(f"{golden.pdk} — Id–Vg fit overlay", fontsize=TITLE_SIZE, fontweight="bold")
+    save_figure(fig, path)
 
 
 def write_fitted_card(
@@ -787,6 +794,8 @@ def write_fitted_card(
         "fit_wall_s": result.fit_wall_s,
         "n_evals": result.n_evals,
         "peak_rss_kb": result.peak_rss_kb,
+        "fit_strategy": result.fit_strategy,
+        "fit_profile": result.fit_profile,
         "history": [
             {
                 "iteration": p.iteration,

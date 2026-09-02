@@ -1,0 +1,31 @@
+{
+  "profile_id": "acm5_staged",
+  "description": "Design-oriented ACM-5 DC extraction stages (UFSC 5-parameter model).",
+  "model_tiers": ["acm5"],
+  "stages": [
+    {
+      "id": "weak_inv",
+      "free": ["n", "VT0"],
+      "curves": "low_vds",
+      "loss": {
+        "weight_linear": 0.15,
+        "weight_log": 0.85
+      }
+    },
+    {
+      "id": "is_scale",
+      "free": ["IS"],
+      "curves": "mid_vds"
+    },
+    {
+      "id": "sigma",
+      "free": ["sigma"],
+      "curves": "all"
+    },
+    {
+      "id": "zeta",
+      "free": ["zeta"],
+      "curves": "high_vds"
+    }
+  ]
+}

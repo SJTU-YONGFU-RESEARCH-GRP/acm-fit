@@ -1,0 +1,18 @@
+{
+  "pdk": "custom_3vds_std",
+  "vdd": 1.8,
+  "width_m": 3e-06,
+  "length_m": 1.8e-07,
+  "polarity": "nmos",
+  "vg_start": 0.0,
+  "vg_step": 0.05,
+  "vds_list": [
+    0.09000000000000001,
+    0.9,
+    1.8
+  ],
+  "n_points_per_curve": 37,
+  "source": "robustness_3vds_standard",
+  "role": "golden_iv_for_acm_dc_fit",
+  "robustness_note": "Recommended default (low / mid / high Vds)"
+}

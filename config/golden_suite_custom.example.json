@@ -1,49 +1,124 @@
 {
   "suite_version": 3,
-  "description": "Example: fit ACM-5 from user-supplied Id-Vg CSVs (no BSIM capture).",
+  "description": "Robustness suite: fit ACM-5 from user-style Id-Vg CSVs (1/2/3 Vds, sparse Vg, corners, nodes).",
   "vg_start": 0.0,
   "vg_step": 0.05,
-  "vds_fractions": [0.05, 0.5, 1.0],
-  "fit_models": ["acm5"],
-  "predict_analyses": ["dc", "ac", "noise", "transient", "temp"],
-  "predict_simulators": ["ngspice"],
+  "vds_fractions": [
+    0.05,
+    0.5,
+    1.0
+  ],
+  "fit_models": [
+    "acm5"
+  ],
+  "predict_analyses": [
+    "dc",
+    "ac",
+    "noise",
+    "transient",
+    "temp"
+  ],
+  "predict_simulators": [
+    "ngspice"
+  ],
   "fit_loss": {
     "id_mode": "absolute",
     "weight_linear": 0.4,
     "weight_log": 0.6,
-    "huber_delta": 1.0e-4,
+    "huber_delta": 0.0001,
     "region_vt_width_v": 0.0,
     "region_vt_boost": 2.0,
     "weight_dc": 1.0,
     "weight_ac": 0.0,
     "weight_noise": 0.0,
     "weight_temp": 0.0,
-    "optuna_trials": 25,
+    "optuna_trials": 1000,
     "refine_starts": 3,
     "refine_maxiter": 15
+  },
+  "fit_engine": {
+    "strategy": "staged_optuna",
+    "strategies": ["optuna", "staged", "staged_optuna"],
+    "fit_profile": "acm5_staged",
+    "optuna_box_fraction": 0.2,
+    "warm_start": {
+      "mode": "parent_corner",
+      "corner_order": {
+        "sky130": ["tt", "ss", "ff"]
+      }
+    }
   },
   "analysis_defaults": {
     "ac": {
       "vgs": 0.9,
-      "f_start": 1.0e3,
-      "f_stop": 1.0e9,
+      "f_start": 1000.0,
+      "f_stop": 1000000000.0,
       "points_per_decade": 10,
       "rd_ohm": 1000.0
     },
     "noise": {
       "vgs": 0.9,
-      "f_start": 1.0e3,
-      "f_stop": 1.0e9,
+      "f_start": 1000.0,
+      "f_stop": 1000000000.0,
       "points_per_decade": 10,
       "rd_ohm": 1000.0
     }
   },
   "targets": {
-    "demo_nmos": {
+    "custom_1vds_sat": {
       "data_only": true,
       "vdd": 1.8,
-      "width_m": 3.0e-6,
-      "length_m": 1.8e-7,
+      "width_m": 3e-06,
+      "length_m": 1.8e-07,
+      "polarity": "nmos"
+    },
+    "custom_2vds": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3e-06,
+      "length_m": 1.8e-07,
+      "polarity": "nmos"
+    },
+    "custom_3vds_std": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3e-06,
+      "length_m": 1.8e-07,
+      "polarity": "nmos"
+    },
+    "custom_sparse_vg": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3e-06,
+      "length_m": 1.8e-07,
+      "polarity": "nmos"
+    },
+    "custom_ptm22": {
+      "data_only": true,
+      "vdd": 0.95,
+      "width_m": 8e-07,
+      "length_m": 2.2e-08,
+      "polarity": "nmos"
+    },
+    "custom_sky130_ss": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3e-06,
+      "length_m": 2.5e-07,
+      "polarity": "nmos"
+    },
+    "custom_sky130_ff": {
+      "data_only": true,
+      "vdd": 1.8,
+      "width_m": 3e-06,
+      "length_m": 2.5e-07,
+      "polarity": "nmos"
+    },
+    "custom_gf180_typ": {
+      "data_only": true,
+      "vdd": 3.3,
+      "width_m": 5e-06,
+      "length_m": 3e-07,
       "polarity": "nmos"
     }
   }

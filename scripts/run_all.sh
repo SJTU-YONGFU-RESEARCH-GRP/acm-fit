@@ -5,14 +5,14 @@ set -euo pipefail
 # run_all.sh — end-to-end golden → fit → predict → eval → report
 #
 # Usage:
-#   bash scripts/run_all.sh              # both lanes + eval (default)
+#   bash scripts/run_all.sh              # commercial + ptm + custom (eval on PDK lanes)
 #   bash scripts/run_all.sh commercial
 #   bash scripts/run_all.sh ptm
 #   bash scripts/run_all.sh all --skip-eval
-#   bash scripts/run_all.sh commercial --skip-golden --iterations 25
+#   bash scripts/run_all.sh commercial --skip-golden --iterations 100
 #   bash scripts/run_all.sh --jobs 8
-#   bash scripts/run_all.sh custom       # user CSV goldens (data/golden/custom/)
-#   bash scripts/run_all.sh custom --golden-from data/golden/my_run
+#   bash scripts/run_all.sh custom       # 8-example robustness matrix → results/custom/
+#   bash scripts/run_all.sh custom --golden-from data/golden/my_run  # your BYOD data
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,13 +26,54 @@ SUITE_CONFIG=""
 
 resolve_lanes() {
     case "$1" in
-        all) echo "commercial ptm" ;;
+        all) echo "commercial ptm custom" ;;
         commercial|ptm|custom) echo "$1" ;;
         *)
             echo "Unknown lane ${1}; expected all, commercial, ptm, or custom." >&2
             exit 1
             ;;
     esac
+}
+
+custom_golden_source() {
+    if [[ -n "${GOLDEN_FROM}" ]]; then
+        echo "${GOLDEN_FROM}"
+        return
+    fi
+    local examples_root="${RELEASE_ROOT}/data/examples"
+    if compgen -G "${examples_root}"/*/meta.json > /dev/null; then
+        echo "${examples_root}"
+        return
+    fi
+    local custom_root="${RELEASE_ROOT}/data/golden/custom"
+    if compgen -G "${custom_root}"/*/meta.json > /dev/null; then
+        echo "${custom_root}"
+        return
+    fi
+    echo "No custom data under data/examples/ or data/golden/custom/." >&2
+    echo "Run: bash scripts/build_custom_examples.sh" >&2
+    exit 1
+}
+
+custom_suite_config() {
+    if [[ -n "${SUITE_CONFIG}" ]]; then
+        echo "${SUITE_CONFIG}"
+        return
+    fi
+    local golden_src
+    golden_src="$(custom_golden_source)"
+    local user_cfg="${RELEASE_ROOT}/config/golden_suite_custom.json"
+    local example_cfg="${RELEASE_ROOT}/config/golden_suite_custom.example.json"
+    if [[ "${golden_src}" == *"/data/golden/custom" && -f "${user_cfg}" ]]; then
+        echo "${user_cfg}"
+    elif [[ -f "${example_cfg}" ]]; then
+        echo "${example_cfg}"
+    elif [[ -f "${user_cfg}" ]]; then
+        echo "${user_cfg}"
+    else
+        echo "Missing ${user_cfg} (copy from golden_suite_custom.example.json)." >&2
+        exit 1
+    fi
 }
 
 eval_config_for_lane() {
@@ -53,12 +94,15 @@ eval_pdks_for_lane() {
 
 DO_EVAL=1
 JOBS="${JOBS:-4}"
-ITERATIONS=25
+ITERATIONS=""
 SKIP_GOLDEN=0
 FROZEN_GOLDEN=0
 SKIP_FIT=0
 SKIP_PREDICT=0
 FORCE=0
+SKIP_FIGURES=0
+FIT_STRATEGY=""
+FIT_BENCHMARK=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -72,6 +116,9 @@ while [[ $# -gt 0 ]]; do
         --skip-predict) SKIP_PREDICT=1; shift ;;
         --skip-eval) DO_EVAL=0; shift ;;
         --eval) DO_EVAL=1; shift ;;
+        --skip-figures) SKIP_FIGURES=1; shift ;;
+        --fit-strategy) FIT_STRATEGY="$2"; shift 2 ;;
+        --fit-benchmark) FIT_BENCHMARK="$2"; shift 2 ;;
         --force) FORCE=1; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
@@ -92,21 +139,16 @@ read -r -a LANES <<< "$(resolve_lanes "${LANE_ARG}")"
 
 for LANE in "${LANES[@]}"; do
     RESULTS_LANE="${LANE}"
+    LANE_DO_EVAL="${DO_EVAL}"
+    LANE_GOLDEN_FLAGS=("${GOLDEN_FLAGS[@]}")
 
     if [[ "${LANE}" == "custom" ]]; then
-        CONFIG="${SUITE_CONFIG:-${RELEASE_ROOT}/config/golden_suite_custom.json}"
-        if [[ ! -f "${CONFIG}" ]]; then
-            echo "Missing ${CONFIG}" >&2
-            echo "Copy config/golden_suite_custom.example.json and edit targets." >&2
-            echo "See data/BRING_YOUR_OWN.md" >&2
-            exit 1
-        fi
-        SKIP_GOLDEN=1
-        DO_EVAL=0
-        GOLDEN_SRC="${GOLDEN_FROM:-${RELEASE_ROOT}/data/golden/custom}"
-        GOLDEN_FLAGS=(--skip-golden)
-        [[ "${SKIP_FIT}" -eq 1 ]] && GOLDEN_FLAGS+=(--skip-fit)
-        [[ "${SKIP_PREDICT}" -eq 1 ]] && GOLDEN_FLAGS+=(--skip-predict)
+        CONFIG="$(custom_suite_config)"
+        GOLDEN_SRC="$(custom_golden_source)"
+        LANE_DO_EVAL=0
+        LANE_GOLDEN_FLAGS=(--skip-golden)
+        [[ "${SKIP_FIT}" -eq 1 ]] && LANE_GOLDEN_FLAGS+=(--skip-fit)
+        [[ "${SKIP_PREDICT}" -eq 1 ]] && LANE_GOLDEN_FLAGS+=(--skip-predict)
     else
         CONFIG="${RELEASE_ROOT}/config/golden_suite_${LANE}.json"
         if [[ ! -f "${CONFIG}" ]]; then
@@ -118,22 +160,29 @@ for LANE in "${LANES[@]}"; do
 
     echo "=== Lane: ${LANE} ==="
     if [[ "${LANE}" == "custom" ]]; then
+        echo "  custom golden: ${GOLDEN_SRC}"
+        echo "  custom config: ${CONFIG}"
         bash "${SCRIPT_DIR}/import_golden_data.sh" --from "${GOLDEN_SRC}" \
             --to "${RELEASE_ROOT}/results/${RESULTS_LANE}"
     elif [[ "${FROZEN_GOLDEN}" -eq 1 ]]; then
         bash "${SCRIPT_DIR}/import_golden_data.sh" "${LANE}"
     fi
 
+    FIT_FLAGS=()
+    [[ -n "${FIT_STRATEGY}" ]] && FIT_FLAGS+=(--fit-strategy "${FIT_STRATEGY}")
+    [[ -n "${FIT_BENCHMARK}" ]] && FIT_FLAGS+=(--fit-benchmark "${FIT_BENCHMARK}")
+
     bash "${SCRIPT_DIR}/run_golden_pipeline.sh" \
         --config "${CONFIG}" \
         --results-dir "${RELEASE_ROOT}/results/${RESULTS_LANE}" \
         --openvaf-binary "${RELEASE_ROOT}/work/openvaf-r" \
-        --iterations "${ITERATIONS}" \
         --jobs "${JOBS}" \
         --simulators ngspice \
-        "${GOLDEN_FLAGS[@]}"
+        ${ITERATIONS:+--iterations "${ITERATIONS}"} \
+        "${FIT_FLAGS[@]}" \
+        "${LANE_GOLDEN_FLAGS[@]}"
 
-    if [[ "${DO_EVAL}" -eq 1 && "${LANE}" != "custom" ]]; then
+    if [[ "${LANE_DO_EVAL}" -eq 1 && "${LANE}" != "custom" ]]; then
         EVAL_CONFIG="$(eval_config_for_lane "${LANE}")"
         EVAL_PDKS="$(eval_pdks_for_lane "${LANE}")"
         echo "=== Eval (${LANE}): ACM vs BSIM (${EVAL_PDKS}) ==="
@@ -151,5 +200,16 @@ for LANE in "${LANES[@]}"; do
 
     echo "Done lane ${LANE}. See ${RELEASE_ROOT}/results/${RESULTS_LANE}/SUMMARY.md"
 done
+
+if [[ "${SKIP_FIGURES}" -eq 0 ]]; then
+    COMM_FIT="${RELEASE_ROOT}/results/commercial/acm5/fit"
+    PTM_FIT="${RELEASE_ROOT}/results/ptm/acm5/fit"
+    if [[ -d "${COMM_FIT}" && -d "${PTM_FIT}" ]] \
+        && compgen -G "${COMM_FIT}"/*.json > /dev/null \
+        && compgen -G "${PTM_FIT}"/*.json > /dev/null; then
+        echo "=== Paper figures: commercial + ptm → figures/ ==="
+        bash "${SCRIPT_DIR}/plot_paper_figures.sh"
+    fi
+fi
 
 echo "All lanes complete."

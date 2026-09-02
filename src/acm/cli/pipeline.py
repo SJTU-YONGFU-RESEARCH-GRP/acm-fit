@@ -26,6 +26,7 @@ from typing import Any
 from acm.eval.config import load_suite_config  # noqa: E402
 from acm.eval.suite import capture_golden_refs  # noqa: E402
 from acm.golden import (  # noqa: E402
+    GoldenDevice,
     GoldenTarget,
     capture_golden_iv,
     load_golden_config,
@@ -40,6 +41,13 @@ from acm.opt.fit import (  # noqa: E402
     write_fitted_card,
     write_idvg_fit_overlay_plot,
 )
+from acm.opt.engine import (
+    FitEnginePolicy,
+    fit_engine_from_mapping,
+    fit_job_waves,
+    resolve_parent_target_name,
+)
+from acm.opt.benchmark import collect_benchmark_rows, write_fit_benchmark_summary
 from acm.opt.loss import LossPolicy, loss_policy_from_mapping  # noqa: E402
 from acm.opt.models import ModelSpec, resolve_models  # noqa: E402
 from acm.opt.predict import run_predict_benches  # noqa: E402
@@ -90,34 +98,104 @@ def _capture_one_golden(
     return name
 
 
+def _vg_grid_for_golden(
+    golden: GoldenDevice,
+    *,
+    vg_start: float,
+    vg_step: float,
+) -> tuple[float, float]:
+    """Use Id–Vg sweep metadata from the golden corpus when present."""
+    if "vg_start" in golden.meta and "vg_step" in golden.meta:
+        return float(golden.meta["vg_start"]), float(golden.meta["vg_step"])
+    if golden.curves:
+        vg = golden.curves[0].vg
+        if len(vg) >= 2:
+            return float(vg[0]), float(vg[1] - vg[0])
+    return vg_start, vg_step
+
+
+def _warm_start_params(
+    *,
+    model: ModelSpec,
+    name: str,
+    golden_dir: Path,
+    fit_dir: Path,
+    fit_engine: FitEnginePolicy,
+) -> dict[str, float] | None:
+    """Load parent-corner fitted parameters when warm-start is configured."""
+    warm = fit_engine.warm_start
+    if warm is None:
+        return None
+    golden = load_golden_device(golden_dir / name)
+    parent_name = resolve_parent_target_name(
+        base_pdk=golden.base_pdk,
+        corner=golden.corner,
+        warm_start=warm,
+    )
+    if parent_name is None:
+        return None
+    card_path = fit_dir / f"{parent_name}.json"
+    if not card_path.is_file():
+        return None
+    card = json.loads(card_path.read_text())
+    params = card.get("parameters")
+    if not isinstance(params, dict):
+        raise ValueError(f"invalid fitted card (no parameters): {card_path}")
+    return {
+        name: float(params[name])
+        for name in model.free_params
+        if name in params
+    }
+
+
 def _fit_one_target(
     *,
     model: ModelSpec,
     name: str,
     golden_dir: Path,
     results_dir: Path,
+    repo_root: Path,
     vg_start: float,
     vg_step: float,
     policy: LossPolicy,
+    fit_engine: FitEnginePolicy,
     analysis_defaults: dict[str, Any],
+    strategy_jobs: int = 1,
 ) -> FitResult:
     golden = load_golden_device(golden_dir / name)
+    vg_start_fit, vg_step_fit = _vg_grid_for_golden(
+        golden, vg_start=vg_start, vg_step=vg_step
+    )
     model_root = _model_dir(results_dir, model.name)
     fit_dir = model_root / "fit"
     fit_dir.mkdir(parents=True, exist_ok=True)
     work_dir = fit_dir / "_work" / name
-    print(f"  fitting {model.name} on {name} ...")
+    init_params = _warm_start_params(
+        model=model,
+        name=name,
+        golden_dir=golden_dir,
+        fit_dir=fit_dir,
+        fit_engine=fit_engine,
+    )
+    strategy_label = fit_engine.strategy
+    if init_params:
+        strategy_label = f"{strategy_label}+warm_start"
+    print(f"  fitting {model.name} on {name} [{strategy_label}] ...")
     result = fit_model_to_golden(
         model=model,
         golden=golden,
         work_dir=work_dir,
         seed=13,
-        vg_start=vg_start,
-        vg_step=vg_step,
+        vg_start=vg_start_fit,
+        vg_step=vg_step_fit,
         policy=policy,
         refine=True,
         results_dir=results_dir,
         analysis_defaults=analysis_defaults,
+        engine=fit_engine,
+        init_params=init_params,
+        repo_root=repo_root,
+        strategy_jobs=strategy_jobs,
     )
     card_path = fit_dir / f"{name}.json"
     write_fitted_card(
@@ -143,8 +221,8 @@ def _fit_one_target(
         golden=golden,
         model=model,
         parameters=result.parameters,
-        vg_start=vg_start,
-        vg_step=vg_step,
+        vg_start=vg_start_fit,
+        vg_step=vg_step_fit,
         work_dir=work_dir / "idvg_plot",
     )
     print(
@@ -213,19 +291,68 @@ def main() -> None:
         default=None,
         help="Override predict simulators (comma list).",
     )
+    parser.add_argument(
+        "--fit-strategy",
+        type=str,
+        default=None,
+        help="Override fit_engine.strategy (optuna, optuna_cmaes, optuna_gp, optuna_qmc, optuna_random, differential_evolution, dual_annealing, lbfgsb, staged, staged_optuna, staged_cmaes, benchmark).",
+    )
+    parser.add_argument(
+        "--fit-benchmark",
+        type=str,
+        default=None,
+        help="Run strategy comparison: comma list (sets strategy=benchmark).",
+    )
+    parser.add_argument(
+        "--strategy-jobs",
+        type=int,
+        default=None,
+        help="Concurrent strategies per target in benchmark mode (default: auto from --jobs).",
+    )
     args = parser.parse_args()
     if args.jobs < 1:
         raise SystemExit(f"--jobs must be >= 1, got {args.jobs}")
+    if args.strategy_jobs is not None and args.strategy_jobs < 1:
+        raise SystemExit(f"--strategy-jobs must be >= 1, got {args.strategy_jobs}")
 
+    repo_root = release_root()
     results_dir = args.results_dir
     golden_dir = results_dir / "golden"
-    cfg = load_golden_config(args.config, release_root())
+    cfg = load_golden_config(args.config, repo_root)
     targets = cfg["_targets"]
-    models = resolve_models(release_root(), tuple(cfg["fit_models"]))
+    models = resolve_models(repo_root, tuple(cfg["fit_models"]))
     policy = loss_policy_from_mapping(cfg["fit_loss"])
     if args.iterations is not None:
         policy = loss_policy_from_mapping(
             {**policy.to_dict(), "optuna_trials": int(args.iterations)}
+        )
+    fit_engine = fit_engine_from_mapping(cfg.get("fit_engine"))
+    if args.fit_benchmark:
+        strategies = tuple(
+            s.strip() for s in args.fit_benchmark.split(",") if s.strip()
+        )
+        if not strategies:
+            raise SystemExit("--fit-benchmark requires a comma-separated strategy list")
+        fit_engine = FitEnginePolicy(
+            strategy="benchmark",
+            strategies=strategies,
+            fit_profile=fit_engine.fit_profile,
+            optuna_trials=fit_engine.optuna_trials,
+            refine_starts=fit_engine.refine_starts,
+            refine_maxiter=fit_engine.refine_maxiter,
+            optuna_box_fraction=fit_engine.optuna_box_fraction,
+            warm_start=fit_engine.warm_start,
+        )
+    elif args.fit_strategy:
+        fit_engine = FitEnginePolicy(
+            strategy=args.fit_strategy,
+            strategies=fit_engine.strategies,
+            fit_profile=fit_engine.fit_profile,
+            optuna_trials=fit_engine.optuna_trials,
+            refine_starts=fit_engine.refine_starts,
+            refine_maxiter=fit_engine.refine_maxiter,
+            optuna_box_fraction=fit_engine.optuna_box_fraction,
+            warm_start=fit_engine.warm_start,
         )
     analysis_defaults = cfg.get("analysis_defaults", {})
     analyses = tuple(cfg["predict_analyses"])
@@ -287,32 +414,76 @@ def main() -> None:
         )
 
     fit_by_model: dict[str, list[FitResult]] = {m.name: [] for m in models}
+    strategy_jobs = 1
+    target_jobs = args.jobs
+    if not args.skip_fit and fit_engine.strategy == "benchmark":
+        n_strategies = len(fit_engine.strategies)
+        if args.strategy_jobs is None:
+            strategy_jobs = 1
+        else:
+            strategy_jobs = min(n_strategies, args.strategy_jobs)
+        # Benchmark mode: run one target and one strategy at a time (Optuna/SciPy deadlock in threads).
+        strategy_jobs = min(n_strategies, strategy_jobs)
+        target_jobs = 1
+        print(
+            f"  benchmark parallelism: target_jobs={target_jobs} "
+            f"strategy_jobs={strategy_jobs} "
+            f"(~{target_jobs * strategy_jobs} concurrent ngspice workers)"
+        )
     if not args.skip_fit:
-        fit_jobs = [(model, name) for name in targets for model in models]
+        target_names = tuple(targets.keys())
+        waves = fit_job_waves(
+            target_names,
+            golden_dir=golden_dir,
+            warm_start=fit_engine.warm_start,
+            load_golden_device=load_golden_device,
+        )
+        n_jobs = sum(len(wave) * len(models) for wave in waves)
         print(
             f"=== Step 2: fit ACM to golden I-V "
-            f"({len(fit_jobs)} jobs, jobs={args.jobs}) ==="
+            f"({n_jobs} jobs, strategy={fit_engine.strategy}, "
+            f"profile={fit_engine.fit_profile}, jobs={target_jobs}) ==="
         )
-        with ThreadPoolExecutor(
-            max_workers=min(args.jobs, len(fit_jobs))
-        ) as pool:
-            futures = {
-                pool.submit(
-                    _fit_one_target,
-                    model=model,
-                    name=name,
-                    golden_dir=golden_dir,
-                    results_dir=results_dir,
-                    vg_start=vg_start,
-                    vg_step=vg_step,
-                    policy=policy,
-                    analysis_defaults=analysis_defaults,
-                ): (model.name, name)
-                for model, name in fit_jobs
-            }
-            for fut in as_completed(futures):
-                result = fut.result()
-                fit_by_model[result.model].append(result)
+        for wave_idx, wave in enumerate(waves, start=1):
+            fit_jobs = [(model, name) for name in wave for model in models]
+            if len(waves) > 1:
+                print(f"  wave {wave_idx}/{len(waves)}: {', '.join(wave)}")
+            with ThreadPoolExecutor(
+                max_workers=min(target_jobs, len(fit_jobs))
+            ) as pool:
+                futures = {
+                    pool.submit(
+                        _fit_one_target,
+                        model=model,
+                        name=name,
+                        golden_dir=golden_dir,
+                        results_dir=results_dir,
+                        repo_root=repo_root,
+                        vg_start=vg_start,
+                        vg_step=vg_step,
+                        policy=policy,
+                        fit_engine=fit_engine,
+                        analysis_defaults=analysis_defaults,
+                        strategy_jobs=strategy_jobs,
+                    ): (model.name, name)
+                    for model, name in fit_jobs
+                }
+                for fut in as_completed(futures):
+                    result = fut.result()
+                    fit_by_model[result.model].append(result)
+
+        if fit_engine.strategy == "benchmark":
+            benchmark_rows: list[dict[str, Any]] = []
+            for model in models:
+                benchmark_rows.extend(
+                    collect_benchmark_rows(results_dir, model.name)
+                )
+            if benchmark_rows:
+                write_fit_benchmark_summary(
+                    results_dir / "FIT_BENCHMARK.md",
+                    rows=benchmark_rows,
+                )
+                print(f"  {results_dir / 'FIT_BENCHMARK.md'}")
 
         for model in models:
             results = fit_by_model[model.name]
@@ -333,6 +504,8 @@ def main() -> None:
                     "fit_wall_s": r.fit_wall_s,
                     "n_evals": r.n_evals,
                     "peak_rss_kb": r.peak_rss_kb,
+                    "fit_strategy": r.fit_strategy,
+                    "fit_profile": r.fit_profile,
                 }
                 for r in results
             ]

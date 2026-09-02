@@ -200,6 +200,36 @@ def _fmt_geom(value: Any) -> str:
     return str(value)
 
 
+def _predict_section_meta(
+    capabilities: Mapping[str, bool],
+) -> tuple[str, str, str, str]:
+    """Return predict section table cell, heading, blurb, and plot caption suffix."""
+    if capabilities.get("user_supplied_only"):
+        return (
+            "No reference device",
+            "## Predict benches (ACM-only)",
+            "ACM-only waveforms from the **fitted card** (no BSIM reference). "
+            "Shown for portability smoke and custom user-input reporting.",
+            "ACM predict",
+        )
+    if capabilities.get("golden_bench_refs"):
+        return (
+            "Yes when BSIM golden exists",
+            "## Predict benches (ACM vs BSIM golden)",
+            "Waveforms from the **fitted ACM card** compared against BSIM golden "
+            "references when available (same golden waveforms as the eval suite). "
+            "Analyses without a captured golden show ACM-only.",
+            "ACM vs BSIM",
+        )
+    return (
+        "No reference device",
+        "## Predict benches (ACM-only)",
+        "Cross-simulator portability of the **fitted ACM card** "
+        "(no BSIM reference in these netlists).",
+        "ACM predict",
+    )
+
+
 def _source_label(source: str) -> str:
     """Human-readable label for golden ``meta.json`` source."""
     labels = {
@@ -207,7 +237,17 @@ def _source_label(source: str) -> str:
         "ptm_bsim_ngspice": "PTM BSIM (ngspice)",
         "user_supplied": "User Id–Vg CSV",
         "user_supplied_example": "Bundled example CSV",
+        "robustness_1vds_saturation": "Robustness: 1 Vds (saturation)",
+        "robustness_2vds_low_high": "Robustness: 2 Vds (low + high)",
+        "robustness_3vds_standard": "Robustness: 3 Vds (standard)",
+        "robustness_sparse_vg_sampling": "Robustness: sparse Vg grid",
+        "robustness_ptm22_short_channel": "Robustness: PTM 22 nm",
+        "robustness_sky130_slow_corner": "Robustness: sky130 SS corner",
+        "robustness_sky130_fast_corner": "Robustness: sky130 FF corner",
+        "robustness_gf180_typical": "Robustness: GF180 typical",
     }
+    if source.startswith("robustness_") and source not in labels:
+        return source.replace("robustness_", "Robustness: ").replace("_", " ")
     return labels.get(source, source)
 
 
@@ -249,13 +289,20 @@ def write_regression_reports(
     outputs: dict[str, Path] = {}
     targets = sorted({str(c["pdk"]) for c in cards})
     sources = discover_input_sources(results_dir, targets)
-    capabilities = report_capabilities(sources=sources, eval_rows=eval_rows)
+    capabilities = report_capabilities(
+        sources=sources, eval_rows=eval_rows, results_dir=results_dir
+    )
 
     for model in models:
         model_dir = model_dirs[model]
         model_eval = [r for r in eval_rows if r["model"] == model]
         model_predict = [r for r in predict_rows if r["model"] == model]
         ref_label = "BSIM golden" if capabilities["eval_waveforms"] else "Reference"
+        bench_ref_label = (
+            "BSIM golden"
+            if capabilities.get("golden_bench_refs")
+            else ref_label
+        )
         write_eval_overlay_plots(
             results_dir=results_dir,
             model=model,
@@ -266,6 +313,7 @@ def write_regression_reports(
             results_dir=results_dir,
             model=model,
             predict_rows=model_predict,
+            ref_label=bench_ref_label,
         )
 
     for model in models:
@@ -343,6 +391,18 @@ def _build_summary(
         fit_blurb = "Parameter extraction accuracy against golden multi-VDS Id–Vg tables."
         eval_blurb = "_Eval suite not run._"
 
+    (
+        predict_compare,
+        predict_heading,
+        predict_blurb,
+        predict_plot_suffix,
+    ) = _predict_section_meta(capabilities)
+    predict_accuracy = (
+        "ACM vs BSIM overlay when golden exists"
+        if capabilities.get("golden_bench_refs")
+        else "ACM-only waveforms (DC/AC/noise/temp/tran)"
+    )
+
     lines: list[str] = [
         "# Regression SUMMARY",
         "",
@@ -354,7 +414,7 @@ def _build_summary(
         "| --- | --- | --- | --- |",
         "| Input sources | — | Dataset provenance (PDK, user CSV, …) | Geometry + VDD |",
         "| Golden I-V fit | Yes (multi-VDS Id–Vg) | Weighted / linear / log RMSE of Id | Fit wall time + Optuna evals |",
-        "| Predict benches | No reference device | ACM-only waveforms (DC/AC/noise/temp/tran) | Per-sim ACM wall time + peak RSS |",
+        f"| Predict benches | {predict_compare} | {predict_accuracy} | Per-sim ACM wall time + peak RSS |",
         "| Eval suite | Yes when BSIM refs exist | ACM vs golden RMSE (DC/AC/noise/temp/tran) | ACM-only wall time + peak RSS |",
         "",
         "## Status",
@@ -425,6 +485,7 @@ def _build_summary(
             "    REPORT.md",
             "    fit/<pdk>.json",
             "    fit/<pdk>_idvg_fit.png",
+            "    plots/<pdk>/bench_<analysis>.png",
             "    plots/<pdk>/eval_<analysis>.png",
             "    benches/<pdk>/<sim>/<analysis>/",
             "    eval/<pdk>/<sim>/<analysis>/acm.csv",
@@ -503,19 +564,12 @@ def _build_summary(
                 )
 
     if predict_rows:
-        bench_blurb = (
-            "ACM-only waveforms from the **fitted card** (no BSIM reference). "
-            "Shown for portability smoke and custom user-input reporting."
-            if capabilities.get("user_supplied_only")
-            else "Cross-simulator portability of the **fitted ACM card** "
-            "(no BSIM reference in these netlists)."
-        )
         lines.extend(
             [
                 "",
-                "## Predict benches (ACM-only)",
+                predict_heading,
                 "",
-                bench_blurb,
+                predict_blurb,
                 "",
             ]
         )
@@ -555,9 +609,9 @@ def _build_summary(
                 lines.extend(
                     [
                         "",
-                        f"### {model} / {pdk} — {label} (ACM predict)",
+                        f"### {model} / {pdk} — {label} ({predict_plot_suffix})",
                         "",
-                        f"![{label} predict]({rel})",
+                        f"![{label} {predict_plot_suffix.lower()}]({rel})",
                         "",
                     ]
                 )
@@ -635,7 +689,7 @@ def _build_model_report(
         "## Metrics guide",
         "",
         f"- **Fit**: ACM DC params vs {ref_name} Id–Vg.",
-        "- **Predict**: ACM-only portability smoke across simulators.",
+        "- **Predict**: ACM portability smoke; overlays BSIM golden when captured.",
         "- **Eval**: Golden reference waveforms vs ACM (when BSIM refs are available).",
         "",
     ]
@@ -736,17 +790,17 @@ def _build_model_report(
             rel = Path(os.path.relpath(combined, start=report_dir)).as_posix()
             lines.extend(["### Fit convergence (all PDKs)", "", f"![]({rel})", ""])
 
-    predict_heading = (
-        "## Predict benches (ACM-only)"
-        if capabilities.get("user_supplied_only")
-        else "## Predict benches (ACM-only, all simulators)"
-    )
-    predict_blurb = (
-        "Waveforms simulated from the fitted ACM card (no reference device). "
-        "Use these for AC/noise/temp/transient reporting when only Id–Vg input was supplied."
-        if capabilities.get("user_supplied_only")
-        else "Portability smoke of the fitted card (no BSIM reference device)."
-    )
+    (
+        _predict_compare,
+        predict_heading,
+        predict_blurb,
+        _predict_plot_suffix,
+    ) = _predict_section_meta(capabilities)
+    if (
+        not capabilities.get("user_supplied_only")
+        and not capabilities.get("golden_bench_refs")
+    ):
+        predict_heading = "## Predict benches (ACM-only, all simulators)"
     lines.extend(
         [
             predict_heading,
@@ -786,7 +840,12 @@ def _build_model_report(
         if plot_root.is_dir():
             bench_plots = sorted(plot_root.rglob("bench_*.png"))
             if bench_plots:
-                lines.extend(["### ACM waveform plots", ""])
+                plot_heading = (
+                    "### ACM vs BSIM waveform plots"
+                    if capabilities.get("golden_bench_refs")
+                    else "### ACM waveform plots"
+                )
+                lines.extend([plot_heading, ""])
                 for plot in bench_plots:
                     rel = Path(os.path.relpath(plot, start=report_dir)).as_posix()
                     label = plot.stem.replace("bench_", "").upper()

@@ -43,7 +43,7 @@ class LossPolicy:
     weight_ac: float = 0.0
     weight_noise: float = 0.0
     weight_temp: float = 0.0
-    optuna_trials: int = 40
+    optuna_trials: int = 1000
     refine_starts: int = 3
     refine_maxiter: int = 15
 

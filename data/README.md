@@ -59,8 +59,8 @@ To fit against **your** Id–Vg curves (simulator export, TCAD, bench data), see
 
 Summary:
 
-1. `scripts/scaffold_golden_target.py` or `scripts/convert_csv_golden.py` — create layout
+1. `scripts/scaffold_golden_target.sh` or `scripts/convert_csv_golden.sh` — create layout
 2. Add `idvg_vds_*.csv` files (`vg,id_ref` columns)
-3. `scripts/validate_golden.py` — check layout
+3. `scripts/validate_golden.sh` — check layout
 4. `config/golden_suite_custom.example.json` — `data_only: true` targets (no PDK netlists)
 5. `bash scripts/run_all.sh custom` — import + fit (eval skipped)

@@ -57,21 +57,35 @@ def discover_input_sources(
     return rows
 
 
+def has_golden_bench_refs(results_dir: Path) -> bool:
+    """Return True if any ``golden/<pdk>/ref/<analysis>/ref.csv`` exists."""
+    golden_root = results_dir / "golden"
+    if not golden_root.is_dir():
+        return False
+    return any(golden_root.glob("*/ref/*/ref.csv"))
+
+
 def report_capabilities(
     *,
     sources: list[dict[str, Any]],
     eval_rows: list[dict[str, Any]],
+    results_dir: Path | None = None,
 ) -> dict[str, bool]:
     """Return which report sections apply for this results tree."""
     has_eval_refs = bool(eval_rows)
     user_only = bool(sources) and all(
-        str(row.get("source", "")).startswith("user_supplied") for row in sources
+        str(row.get("source", "")).startswith(("user_supplied", "robustness_"))
+        for row in sources
+    )
+    golden_bench_refs = (
+        has_golden_bench_refs(results_dir) if results_dir is not None else False
     )
     return {
         "fit_dc": bool(sources),
         "eval_waveforms": has_eval_refs,
+        "golden_bench_refs": golden_bench_refs,
         "user_supplied_only": user_only and not has_eval_refs,
     }
 
 
-__all__ = ["discover_input_sources", "report_capabilities"]
+__all__ = ["discover_input_sources", "has_golden_bench_refs", "report_capabilities"]

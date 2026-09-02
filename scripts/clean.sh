@@ -12,7 +12,7 @@ usage() {
     cat <<'EOF'
 Usage:
   bash scripts/clean.sh              # remove work/ + all results/<lane>/
-  bash scripts/clean.sh smoke        # remove only results/smoke/
+  bash scripts/clean.sh custom      # remove only results/custom/
   bash scripts/clean.sh commercial   # remove only results/commercial/
   bash scripts/clean.sh --pycache    # also remove __pycache__ / *.pyc under src/
 
@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
         --pycache) ALL=1; shift ;;
-        smoke|commercial|ptm)
+        custom|commercial|ptm)
             if [[ -n "${LANE}" ]]; then
                 echo "Specify at most one lane, or none for all lanes." >&2
                 exit 1
