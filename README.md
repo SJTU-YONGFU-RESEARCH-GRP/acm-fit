@@ -4,10 +4,14 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-3776ab.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit/actions/workflows/smoke.yml/badge.svg)](https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit/actions/workflows/smoke.yml)
 
-This repository provides **frozen BSIM reference I–V curves** for open PDK and PTM
-nodes and an **end-to-end Python pipeline** that fits the public **ACM-5** (UFSC
-ACM2) Verilog-A compact model, runs predict benches, and evaluates ACM vs BSIM
-golden waveforms.
+Open PDKs ship BSIM reference models, but fitting a design-oriented Verilog-A
+compact model against them is still largely manual and hard to reproduce across
+process corners. **acm-fit** closes that gap: frozen **BSIM golden Id–Vg
+curves** for commercial open-PDK and PTM scaling targets, plus a headless
+**Python pipeline** that extracts the public **ACM-5** (UFSC ACM2) model via
+hybrid staged extraction and Optuna search, runs multi-analysis predict benches,
+and reports structured ACM-vs-BSIM evaluation—or fits from your own Id–Vg CSVs
+with no foundry netlist.
 
 - **Repository:** [SJTU-YONGFU-RESEARCH-GRP/acm-fit](https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit)
 - **Package name:** `acm-fit` (release tag `v0.1.0-lascas-2026`)
