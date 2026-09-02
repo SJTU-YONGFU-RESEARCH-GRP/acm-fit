@@ -35,6 +35,7 @@ from acm.golden import (  # noqa: E402
 from acm.opt.fit import (  # noqa: E402
     FitResult,
     fit_model_to_golden,
+    fit_result_from_fitted_card,
     write_combined_error_vs_iteration_plot,
     write_error_vs_iteration_plot,
     write_fit_history_csv,
@@ -47,7 +48,11 @@ from acm.opt.engine import (
     fit_job_waves,
     resolve_parent_target_name,
 )
-from acm.opt.benchmark import collect_benchmark_rows, write_fit_benchmark_summary
+from acm.opt.benchmark import (
+    benchmark_target_complete,
+    collect_benchmark_rows,
+    write_fit_benchmark_summary,
+)
 from acm.opt.loss import LossPolicy, loss_policy_from_mapping  # noqa: E402
 from acm.opt.models import ModelSpec, resolve_models  # noqa: E402
 from acm.opt.predict import run_predict_benches  # noqa: E402
@@ -211,11 +216,12 @@ def _fit_one_target(
             if v is not None
         },
     )
-    write_fit_history_csv(fit_dir / f"{name}_history.csv", result)
-    write_error_vs_iteration_plot(
-        fit_dir / f"{name}_error_vs_iter.png",
-        result,
-    )
+    if result.history:
+        write_fit_history_csv(fit_dir / f"{name}_history.csv", result)
+        write_error_vs_iteration_plot(
+            fit_dir / f"{name}_error_vs_iter.png",
+            result,
+        )
     write_idvg_fit_overlay_plot(
         fit_dir / f"{name}_idvg_fit.png",
         golden=golden,
@@ -229,7 +235,7 @@ def _fit_one_target(
         f"    err={result.weighted_error:.4g} "
         f"wall={result.fit_wall_s:.2f}s -> {card_path}"
     )
-    if work_dir.exists():
+    if fit_engine.strategy != "benchmark" and work_dir.exists():
         shutil.rmtree(work_dir)
     return result
 
@@ -309,6 +315,12 @@ def main() -> None:
         default=None,
         help="Concurrent strategies per target in benchmark mode (default: auto from --jobs).",
     )
+    parser.add_argument(
+        "--targets",
+        type=str,
+        default=None,
+        help="Comma-separated target ids to run (default: all targets in config).",
+    )
     args = parser.parse_args()
     if args.jobs < 1:
         raise SystemExit(f"--jobs must be >= 1, got {args.jobs}")
@@ -320,6 +332,15 @@ def main() -> None:
     golden_dir = results_dir / "golden"
     cfg = load_golden_config(args.config, repo_root)
     targets = cfg["_targets"]
+    if args.targets is not None:
+        selected = tuple(s.strip() for s in args.targets.split(",") if s.strip())
+        if not selected:
+            raise SystemExit("--targets requires at least one target id")
+        unknown = sorted(set(selected) - set(targets))
+        if unknown:
+            raise SystemExit(f"unknown targets in --targets: {', '.join(unknown)}")
+        targets = {name: targets[name] for name in selected}
+        cfg["_targets"] = targets
     models = resolve_models(repo_root, tuple(cfg["fit_models"]))
     policy = loss_policy_from_mapping(cfg["fit_loss"])
     if args.iterations is not None:
@@ -445,9 +466,30 @@ def main() -> None:
             f"profile={fit_engine.fit_profile}, jobs={target_jobs}) ==="
         )
         for wave_idx, wave in enumerate(waves, start=1):
-            fit_jobs = [(model, name) for name in wave for model in models]
+            fit_jobs: list[tuple[ModelSpec, str]] = []
+            for name in wave:
+                for model in models:
+                    if fit_engine.strategy == "benchmark":
+                        bench_dir = results_dir / "fit_benchmark" / model.name
+                        card_path = _model_dir(results_dir, model.name) / "fit" / f"{name}.json"
+                        if (
+                            benchmark_target_complete(
+                                bench_dir,
+                                name,
+                                fit_engine.strategies,
+                            )
+                            and card_path.is_file()
+                        ):
+                            print(f"  skip {model.name} on {name} [benchmark complete]")
+                            fit_by_model[model.name].append(
+                                fit_result_from_fitted_card(card_path)
+                            )
+                            continue
+                    fit_jobs.append((model, name))
             if len(waves) > 1:
                 print(f"  wave {wave_idx}/{len(waves)}: {', '.join(wave)}")
+            if not fit_jobs:
+                continue
             with ThreadPoolExecutor(
                 max_workers=min(target_jobs, len(fit_jobs))
             ) as pool:

@@ -813,10 +813,44 @@ def write_fitted_card(
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
+def fit_result_from_fitted_card(path: Path) -> FitResult:
+    """Rebuild ``FitResult`` from a written fitted card JSON."""
+    payload = json.loads(path.read_text())
+    history = tuple(
+        FitHistoryPoint(
+            iteration=int(row["iteration"]),
+            phase=str(row["phase"]),
+            weighted_error=float(row["weighted_error"]),
+            best_weighted_error=float(row["best_weighted_error"]),
+        )
+        for row in payload.get("history", [])
+    )
+    return FitResult(
+        pdk=str(payload["pdk"]),
+        model=str(payload["model"]),
+        parameters={k: float(v) for k, v in payload["parameters"].items()},
+        weighted_error=float(payload["weighted_error"]),
+        rmse_linear=float(payload["rmse_linear"]),
+        rmse_log=float(payload["rmse_log"]),
+        fit_wall_s=float(payload["fit_wall_s"]),
+        n_evals=int(payload["n_evals"]),
+        peak_rss_kb=int(payload["peak_rss_kb"]),
+        history=history,
+        loss_policy=dict(payload.get("loss_policy", {})),
+        rmse_ac=payload.get("rmse_ac"),
+        rmse_noise=payload.get("rmse_noise"),
+        rmse_temp=payload.get("rmse_temp"),
+        dc_loss=payload.get("dc_loss"),
+        fit_strategy=payload.get("fit_strategy"),
+        fit_profile=payload.get("fit_profile"),
+    )
+
+
 __all__ = [
     "FitHistoryPoint",
     "FitResult",
     "fit_model_to_golden",
+    "fit_result_from_fitted_card",
     "write_combined_error_vs_iteration_plot",
     "write_error_vs_iteration_plot",
     "write_fit_history_csv",

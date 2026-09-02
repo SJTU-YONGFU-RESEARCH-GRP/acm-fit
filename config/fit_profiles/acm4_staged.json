@@ -1,0 +1,26 @@
+{
+  "profile_id": "acm4_staged",
+  "description": "Design-oriented ACM-4 DC extraction stages (4-parameter model).",
+  "model_tiers": ["acm4"],
+  "stages": [
+    {
+      "id": "weak_inv",
+      "free": ["n", "VT0"],
+      "curves": "low_vds",
+      "loss": {
+        "weight_linear": 0.15,
+        "weight_log": 0.85
+      }
+    },
+    {
+      "id": "is_scale",
+      "free": ["IS"],
+      "curves": "mid_vds"
+    },
+    {
+      "id": "sigma",
+      "free": ["sigma"],
+      "curves": "all"
+    }
+  ]
+}

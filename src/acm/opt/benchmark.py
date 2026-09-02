@@ -16,6 +16,39 @@ from acm.opt.models import ModelSpec
 from acm.opt.strategies import FitSession, run_single_strategy
 
 
+def benchmark_target_complete(
+    benchmark_dir: Path,
+    pdk: str,
+    strategies: tuple[str, ...] | list[str],
+) -> bool:
+    """True when per-target benchmark summary lists every strategy."""
+    path = benchmark_dir / f"{pdk}.json"
+    if not path.is_file():
+        return False
+    rows = json.loads(path.read_text())
+    return {row["strategy"] for row in rows} == set(strategies)
+
+
+def _result_from_benchmark_row(
+    row: Mapping[str, Any],
+    *,
+    pdk: str,
+    model_name: str,
+) -> FitResult:
+    return FitResult(
+        pdk=pdk,
+        model=model_name,
+        parameters={},
+        weighted_error=float(row["weighted_error"]),
+        rmse_linear=float(row["weighted_error"]),
+        rmse_log=float(row["rmse_log"]),
+        fit_wall_s=float(row["fit_wall_s"]),
+        n_evals=int(row["n_evals"]),
+        peak_rss_kb=0,
+        fit_strategy=str(row["strategy"]),
+    )
+
+
 def _benchmark_markdown(
     *,
     target: str,
@@ -165,16 +198,20 @@ def run_fit_benchmark(
     target_json = benchmark_dir / f"{golden.pdk}.json"
     if target_json.is_file():
         rows = json.loads(target_json.read_text())
-        cached_from_json = {
-            row["strategy"]: _load_checkpoint(_checkpoint_path(work_dir, row["strategy"]))
-            for row in rows
-        }
-        if (
-            set(cached_from_json) == set(engine.strategies)
-            and all(v is not None for v in cached_from_json.values())
-        ):
-            best = min(cached_from_json.values(), key=lambda r: r.weighted_error)
-            return best, cached_from_json
+        if {row["strategy"] for row in rows} == set(engine.strategies):
+            cached_from_json: dict[str, FitResult] = {}
+            for row in rows:
+                strategy = str(row["strategy"])
+                cached = _load_checkpoint(_checkpoint_path(work_dir, strategy))
+                cached_from_json[strategy] = cached or _result_from_benchmark_row(
+                    row,
+                    pdk=golden.pdk,
+                    model_name=model.name,
+                )
+            return (
+                min(cached_from_json.values(), key=lambda r: r.weighted_error),
+                cached_from_json,
+            )
     results: dict[str, FitResult] = {}
     bounds = _bounds(golden.width_m, model)
     common = {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Compare DC fit strategies (writes results/<results-dir>/FIT_BENCHMARK.md).
 #
-# Parallelism: strategies run sequentially per target; --jobs parallelizes targets.
+# Parallelism: in benchmark mode the pipeline runs one target at a time; use
+# run_fit_benchmark_remaining.sh to fan out idle targets without stopping lane jobs.
 # Publication default: 500 trials, strategy_jobs=1 (avoids Optuna/SciPy thread deadlocks).
 # Quick smoke:  bash scripts/run_fit_benchmark.sh custom --iterations 25 --jobs 8
 set -euo pipefail
@@ -26,6 +27,7 @@ while [[ $# -gt 0 ]]; do
         --jobs) JOBS="$2"; shift 2 ;;
         --strategy-jobs) STRATEGY_JOBS="$2"; shift 2 ;;
         --results-dir) RESULTS_SUBDIR="$2"; shift 2 ;;
+        --targets) EXTRA+=("$1" "$2"); shift 2 ;;
         *) EXTRA+=("$1"); shift ;;
     esac
 done
@@ -58,6 +60,8 @@ STRATEGY_FLAG=(--strategy-jobs "${STRATEGY_JOBS}")
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/_acm_env.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/load_pdk_env.sh"
 
 echo "Strategy benchmark: lane=${LANE} results=${RESULTS_DIR} iterations=${ITERATIONS} jobs=${JOBS} ${STRATEGY_JOBS:+strategy_jobs=${STRATEGY_JOBS}}"
 cd "${RELEASE_ROOT}"

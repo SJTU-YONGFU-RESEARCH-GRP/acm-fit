@@ -2,6 +2,9 @@
 
 Synced with the dev-plot skill: bold sans-serif, visible top/right spines,
 MATLAB-aligned blue/red/purple series colors.
+
+Column-embed constants (FIGSIZE_COLUMN_*, IEEE_COLUMN_WIDTH_IN) follow the
+dev-plot skill "Column-embed profile" — see ~/.codex/skills/dev-plot/reference.md.
 """
 
 from __future__ import annotations
@@ -17,6 +20,17 @@ FIGSIZE = (11, 5)
 FIGSIZE_STANDARD = (7.5, 4.5)
 FIGSIZE_COMBINED = (8.5, 5.0)
 FIGSIZE_IDVG_ROW = (10.0, 3.2)
+# IEEE single-column width (~3.5 in). Generate at this width so LaTeX
+# \includegraphics[width=\linewidth] does not down-scale the canvas.
+IEEE_COLUMN_WIDTH_IN = 3.5
+FIGSIZE_COLUMN = (IEEE_COLUMN_WIDTH_IN, 3.1)
+FIGSIZE_COLUMN_SQUARE = (IEEE_COLUMN_WIDTH_IN, 3.5)
+FIGSIZE_COLUMN_PTM_PARAMS = (IEEE_COLUMN_WIDTH_IN, 3.8)
+FIGSIZE_COLUMN_BAR = (IEEE_COLUMN_WIDTH_IN, 5.4)
+FIGSIZE_COLUMN_HEATMAP = (IEEE_COLUMN_WIDTH_IN, 4.2)
+FIGSIZE_COLUMN_RUNTIME = (3.8, 3.0)
+# Stacked linear/log Id–Vg panels: full column width, landscape panel aspect.
+FIGSIZE_COLUMN_IDVG = (IEEE_COLUMN_WIDTH_IN, 3.2)
 
 BAR_COLOR = "#0033cc"
 BAR_EDGE_COLOR = "#002080"
@@ -25,6 +39,7 @@ COLOR_SECONDARY = "#cc0000"
 COLOR_ACCENT = "#7f3fbf"
 COLOR_REFERENCE = "#555555"
 COLOR_TRIAL = "#7f7f7f"
+COLOR_CORNER_FF = "#008000"
 
 LINE_COLORS = {
     "energy": COLOR_PRIMARY,
@@ -38,18 +53,24 @@ LINE_COLORS = {
 MULTI_SERIES_COLORS = (COLOR_PRIMARY, COLOR_SECONDARY, COLOR_ACCENT)
 PURPLE_CYCLE = ("#7f3fbf", "#9b59b6", "#6a1b9a", "#4a148c")
 
-LINEWIDTH_MAIN = 4.0
-LINEWIDTH_SECONDARY = 3.0
+LINEWIDTH_MAIN = 3.0
+LINEWIDTH_SECONDARY = 2.4
 GRID_ALPHA = 0.35
-TITLE_SIZE = 17
-LABEL_SIZE = 13
-TICK_SIZE = 10
+TITLE_SIZE = 11
+LABEL_SIZE = 10
+TICK_SIZE = 9
 LEGEND_SIZE = 9
+ANNOT_SIZE = 8
+CBAR_LABEL_SIZE = 10
 BAR_EDGE_WIDTH = 1.0
-SPINE_WIDTH = 2.0
-GRID_LINEWIDTH = 1.1
+SPINE_WIDTH = 1.8
+GRID_LINEWIDTH = 1.0
+MARKER_SIZE_MAIN = 6.5
+MARKER_SIZE_SECONDARY = 5.5
+SCATTER_SIZE = 120
+SCATTER_SIZE_LARGE = 320
 
-_SAVE_DPI = 150
+_SAVE_DPI = 300
 
 _rc_applied = False
 
@@ -100,18 +121,37 @@ def set_axis_labels(
         ax.set_ylabel(ylabel, fontsize=LABEL_SIZE)
 
 
-def save_figure(fig: plt.Figure, path: Path, *, dpi: int = _SAVE_DPI) -> None:
+def save_figure(
+    fig: plt.Figure,
+    path: Path,
+    *,
+    dpi: int = _SAVE_DPI,
+    layout: str = "constrained",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(path, dpi=dpi, bbox_inches="tight")
+    if layout == "tight":
+        fig.tight_layout()
+    elif layout != "none":
+        fig.set_constrained_layout(True)
+    fig.savefig(path, dpi=dpi, bbox_inches="tight", pad_inches=0.04)
     plt.close(fig)
 
 
 __all__ = [
+    "ANNOT_SIZE",
+    "CBAR_LABEL_SIZE",
     "FIGSIZE",
+    "FIGSIZE_COLUMN",
+    "FIGSIZE_COLUMN_BAR",
+    "FIGSIZE_COLUMN_HEATMAP",
+    "FIGSIZE_COLUMN_RUNTIME",
+    "FIGSIZE_COLUMN_IDVG",
+    "FIGSIZE_COLUMN_PTM_PARAMS",
+    "FIGSIZE_COLUMN_SQUARE",
     "FIGSIZE_COMBINED",
     "FIGSIZE_IDVG_ROW",
     "FIGSIZE_STANDARD",
+    "COLOR_CORNER_FF",
     "COLOR_PRIMARY",
     "COLOR_REFERENCE",
     "COLOR_SECONDARY",
@@ -119,8 +159,13 @@ __all__ = [
     "LINEWIDTH_MAIN",
     "LINEWIDTH_SECONDARY",
     "LEGEND_SIZE",
+    "MARKER_SIZE_MAIN",
+    "MARKER_SIZE_SECONDARY",
     "MULTI_SERIES_COLORS",
+    "SCATTER_SIZE",
+    "SCATTER_SIZE_LARGE",
     "SPINE_WIDTH",
+    "TICK_SIZE",
     "TITLE_SIZE",
     "apply_style",
     "ensure_rcparams",
