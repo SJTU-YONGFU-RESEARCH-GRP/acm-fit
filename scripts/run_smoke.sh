@@ -12,4 +12,4 @@ bash "${SCRIPT_DIR}/run_all.sh" custom \
     --fit-strategy optuna
 
 echo "Smoke OK — see $(cd "${SCRIPT_DIR}/.." && pwd)/results/custom/SUMMARY.md"
-echo "Note: production default is staged_optuna (see fit_engine in config/golden_suite_*.json)."
+echo "Note: production default is Optuna with relative Id loss (see fit_loss/fit_engine in config/golden_suite_*.json)."

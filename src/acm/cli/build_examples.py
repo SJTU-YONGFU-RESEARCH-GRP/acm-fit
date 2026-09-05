@@ -188,9 +188,9 @@ def _write_suite_config(path: Path, examples_root: Path, names: list[str]) -> No
         "predict_analyses": ["dc", "ac", "noise", "transient", "temp"],
         "predict_simulators": ["ngspice"],
         "fit_loss": {
-            "id_mode": "absolute",
-            "weight_linear": 0.4,
-            "weight_log": 0.6,
+            "id_mode": "relative",
+            "weight_linear": 0.75,
+            "weight_log": 0.25,
             "huber_delta": 1.0e-4,
             "region_vt_width_v": 0.0,
             "region_vt_boost": 2.0,

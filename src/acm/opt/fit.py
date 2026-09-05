@@ -149,14 +149,13 @@ def _run_acm_idvg(
     netlist = work_dir / f"acm_{tag}.spice"
     out = (work_dir / f"acm_{tag}.txt").resolve()
     if polarity == "pmos":
-        vg_stop = -vdd
-        step = -abs(vg_step)
+        # Match golden capture: source/bulk at VDD, gate VDD→0, return |Vgs|.
         bias = f"""VDD vdd 0 DC {vdd}
-VG1 g1 0 DC 0
-VS1 s1 vdd 0 DC 0
-VB1 b1 vdd 0 DC 0
+VG1 g1 0 DC {vdd}
+VS1 s1 vdd DC 0
+VB1 b1 vdd DC 0
 VD1 d1 0 DC {vdd - vds}"""
-        dc_line = f"dc VG1 {vg_start} {vg_stop} {step}"
+        dc_line = f"dc VG1 {vdd} 0 {-abs(vg_step)}"
     else:
         bias = f"""VG1 g1 0 DC 0
 VS1 s1 0 DC 0
@@ -201,7 +200,13 @@ wrdata {out} abs(i(VS1))
         tail = "\n".join(text.strip().splitlines()[-20:])
         raise RuntimeError(f"ACM sim failed: {netlist}\n{tail}")
     raw = np.loadtxt(out)
-    return raw[:, 0], raw[:, 1], float(match.group(1)), int(match.group(2))
+    vg_gate = raw[:, 0]
+    id_acm = raw[:, 1]
+    if polarity == "pmos":
+        vg = float(vdd) - vg_gate
+    else:
+        vg = vg_gate
+    return vg, id_acm, float(match.group(1)), int(match.group(2))
 
 
 def _pdk_stub(golden: GoldenDevice) -> PdkEvalConfig:

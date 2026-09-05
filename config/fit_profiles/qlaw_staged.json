@@ -1,0 +1,26 @@
+{
+  "profile_id": "qlaw_staged",
+  "description": "Design-oriented QLAW DC extraction stages (4-parameter champions).",
+  "model_tiers": ["qlaw_gm_j14", "qlaw_sh_w34", "qlaw_hp_w14"],
+  "stages": [
+    {
+      "id": "weak_inv",
+      "free": ["n", "VT0"],
+      "curves": "low_vds",
+      "loss": {
+        "weight_linear": 0.15,
+        "weight_log": 0.85
+      }
+    },
+    {
+      "id": "is_scale",
+      "free": ["IS"],
+      "curves": "mid_vds"
+    },
+    {
+      "id": "sigma",
+      "free": ["sigma"],
+      "curves": "all"
+    }
+  ]
+}

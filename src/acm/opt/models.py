@@ -91,10 +91,6 @@ def _tier_model(
 
 _GEN4_SPICE: dict[str, str] = {
     "acm4": "ACM4",
-    "acm4c": "ACM4C",
-    "acm4cn": "ACM4CN",
-    "acm4cnt": "ACM4CNT",
-    "acm4cj": "ACM4CJ",
 }
 _GEN5_SPICE: dict[str, str] = {
     "acm5": "NMOS_ACM",

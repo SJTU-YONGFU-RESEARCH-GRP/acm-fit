@@ -157,6 +157,31 @@ STRATEGY_BENCH_DIRS = (
     "strategy_bench",
 )
 
+# Models included in LASCAS strategy / PTM comparison figures.
+PAPER_FIT_MODELS = (
+    "acm4",
+    "acm5",
+    "qlaw_gm_j14",
+)
+
+MODEL_LABELS = {
+    "acm4": "ACM-4",
+    "acm5": "ACM-5",
+    "qlaw_gm_j14": "QLAW",
+}
+
+MODEL_COLORS = {
+    "acm4": COLOR_ACCENT,
+    "acm5": COLOR_PRIMARY,
+    "qlaw_gm_j14": COLOR_SECONDARY,
+}
+
+MODEL_MARKERS = {
+    "acm4": "s",
+    "acm5": "o",
+    "qlaw_gm_j14": "^",
+}
+
 STRATEGY_ANNOT_OFFSETS: dict[str, tuple[int, int, str, str]] = {
     # dx, dy (pt), ha, va — keep labels inside axes (above low-y points, right of left edge)
     "optuna_cmaes": (0, -20, "right", "bottom"),
@@ -246,24 +271,34 @@ def plot_ptm_scaling(ptm_dir: Path, out: Path) -> None:
 
 
 def plot_ptm_params(ptm_dir: Path, out: Path) -> None:
+    """PTM scaling: shared DC params (ACM-5) + weighted error for ACM-4/5/QLAW."""
     ensure_rcparams()
-    fit_dir = ptm_dir / "acm5" / "fit"
-    cards = {str(c["pdk"]): c for c in _load_fit_cards(fit_dir)}
-    if not cards:
-        raise FileNotFoundError(f"no PTM fit cards in {fit_dir}")
+    cards_by_model: dict[str, dict[str, dict]] = {}
+    for model in PAPER_FIT_MODELS:
+        fit_dir = ptm_dir / model / "fit"
+        if not fit_dir.is_dir():
+            continue
+        cards = {str(c["pdk"]): c for c in _load_fit_cards(fit_dir)}
+        if cards:
+            cards_by_model[model] = cards
+    if "acm5" not in cards_by_model:
+        raise FileNotFoundError(f"no ACM-5 PTM fit cards under {ptm_dir}")
+    if not cards_by_model:
+        raise FileNotFoundError(f"no PTM fit cards under {ptm_dir}")
 
     node_ticks = [NODE_ORDER[0][1], NODE_ORDER[-1][1]]  # 180 nm, 22 nm
+    acm5_cards = cards_by_model["acm5"]
 
     fig, axes = plt.subplots(3, 2, figsize=FIGSIZE_COLUMN_PTM_PARAMS, sharex=True)
     for ax_idx, (param, label, scale) in enumerate(PTM_FIT_PARAMS):
         ax = axes.flat[ax_idx]
         xs, ys = [], []
         for pdk, nm in NODE_ORDER:
-            if pdk in cards:
+            if pdk in acm5_cards and param in acm5_cards[pdk]["parameters"]:
                 xs.append(nm)
-                ys.append(float(cards[pdk]["parameters"][param]) * scale)
+                ys.append(float(acm5_cards[pdk]["parameters"][param]) * scale)
         if not xs:
-            raise KeyError(f"parameter {param} missing from PTM fit cards")
+            raise KeyError(f"parameter {param} missing from ACM-5 PTM fit cards")
         ax.plot(
             xs,
             ys,
@@ -281,26 +316,37 @@ def plot_ptm_params(ptm_dir: Path, out: Path) -> None:
         ax.tick_params(axis="y", labelleft=True, labelright=False)
 
     ax_err = axes.flat[5]
-    err_x, err_y = [], []
-    for pdk, nm in NODE_ORDER:
-        if pdk in cards:
-            err_x.append(nm)
-            err_y.append(float(cards[pdk]["weighted_error"]))
-    ax_err.plot(
-        err_x,
-        err_y,
-        "o-",
-        color=COLOR_PRIMARY,
-        linewidth=LINEWIDTH_SECONDARY,
-        markersize=MARKER_SIZE_SECONDARY,
-        markerfacecolor="white",
-        markeredgewidth=1.0,
-    )
+    for model, cards in cards_by_model.items():
+        err_x, err_y = [], []
+        for pdk, nm in NODE_ORDER:
+            if pdk in cards:
+                err_x.append(nm)
+                err_y.append(float(cards[pdk]["weighted_error"]))
+        if not err_x:
+            continue
+        ax_err.plot(
+            err_x,
+            err_y,
+            f"{MODEL_MARKERS[model]}-",
+            color=MODEL_COLORS[model],
+            linewidth=LINEWIDTH_SECONDARY,
+            markersize=MARKER_SIZE_SECONDARY,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label=MODEL_LABELS[model],
+        )
     set_axis_labels(ax_err, title="Wt. error")
     ax_err.set_xscale("log")
     ax_err.invert_xaxis()
     apply_style(ax_err)
     ax_err.tick_params(axis="y", labelleft=True, labelright=False)
+    if len(cards_by_model) > 1:
+        ax_err.legend(
+            fontsize=LEGEND_SIZE - 1,
+            frameon=False,
+            loc="best",
+            handlelength=1.6,
+        )
 
     for ax in axes.flat[:4]:
         ax.tick_params(labelbottom=False)
@@ -391,7 +437,6 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
         sharex=True,
     )
     lw = LINEWIDTH_SECONDARY
-    ref_labeled = False
 
     for target, corner_label, fit_color in SKY130_IDVG_CORNERS:
         golden_csv = commercial_dir / "golden" / target / f"idvg_vds_{vds_tag}.csv"
@@ -403,17 +448,17 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
 
         vg_g, id_g = _read_golden_curve(golden_csv)
         vg_a, id_a = _read_golden_curve(acm_csv)
-        ref_label = "BSIM reference" if not ref_labeled else None
-        if ref_label is not None:
-            ref_labeled = True
+        # Per-corner BSIM (dotted) and ACM-5 (solid) share color so overlays read correctly.
+        bsim_label = f"BSIM {corner_label}"
+        acm_label = f"ACM-5 {corner_label}"
 
         ax_lin.plot(
             vg_g,
             id_g * 1e6,
-            color=COLOR_REFERENCE,
+            color=fit_color,
             linewidth=lw,
             linestyle=":",
-            label=ref_label,
+            label=bsim_label,
         )
         ax_lin.plot(
             vg_a,
@@ -421,7 +466,7 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
             color=fit_color,
             linewidth=lw,
             linestyle="-",
-            label=f"ACM-5 {corner_label}",
+            label=acm_label,
         )
 
         mask_g = id_g > 0
@@ -429,10 +474,10 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
         ax_log.semilogy(
             vg_g[mask_g],
             id_g[mask_g],
-            color=COLOR_REFERENCE,
+            color=fit_color,
             linewidth=lw,
             linestyle=":",
-            label=ref_label,
+            label=bsim_label,
         )
         ax_log.semilogy(
             vg_a[mask_a],
@@ -440,7 +485,7 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
             color=fit_color,
             linewidth=lw,
             linestyle="-",
-            label=f"ACM-5 {corner_label}",
+            label=acm_label,
         )
 
     set_axis_labels(
@@ -457,8 +502,8 @@ def plot_idvg_sky130_corners(commercial_dir: Path, vds_tag: str, out: Path) -> N
         ylabel=r"$I_d$ (A)",
     )
     apply_style(ax_log)
-    ax_lin.legend(fontsize=LEGEND_SIZE, loc="upper left", ncol=2)
-    ax_log.legend(fontsize=LEGEND_SIZE, loc="lower right", ncol=2)
+    ax_lin.legend(fontsize=max(LEGEND_SIZE - 1, 6), loc="upper left", ncol=2)
+    ax_log.legend(fontsize=max(LEGEND_SIZE - 1, 6), loc="lower right", ncol=2)
     fig.supxlabel(r"$V_g$ (V)", fontsize=LABEL_SIZE, fontweight="bold", y=0.02)
     ax_lin.set_xlabel("")
     ax_log.set_xlabel("")
@@ -841,9 +886,13 @@ def _strategy_bench_dirs(root: Path | None = None) -> list[Path]:
     base = root or release_root()
     dirs: list[Path] = []
     for lane in STRATEGY_BENCH_DIRS:
-        bench_dir = base / "results" / lane / "fit_benchmark" / "acm5"
-        if bench_dir.is_dir():
-            dirs.append(bench_dir)
+        bench_root = base / "results" / lane / "fit_benchmark"
+        if not bench_root.is_dir():
+            continue
+        for model in PAPER_FIT_MODELS:
+            bench_dir = bench_root / model
+            if bench_dir.is_dir():
+                dirs.append(bench_dir)
     return dirs
 
 
@@ -852,12 +901,13 @@ def _load_strategy_rows(bench_dirs: Path | list[Path]) -> list[dict]:
         bench_dirs = [bench_dirs]
     rows: list[dict] = []
     for bench_dir in bench_dirs:
+        model = bench_dir.name
         for path in sorted(bench_dir.glob("*.json")):
             if path.name == "fit_summary.json":
                 continue
             target = path.stem
             for entry in json.loads(path.read_text()):
-                rows.append({"target": target, **entry})
+                rows.append({"target": target, "model": model, **entry})
     if not rows:
         paths = ", ".join(str(d) for d in bench_dirs)
         raise FileNotFoundError(f"no benchmark JSON under {paths}")
@@ -874,28 +924,49 @@ def _strategy_rows_for_figures(rows: list[dict]) -> list[dict]:
 
 
 def _aggregate_strategy_rows(rows: list[dict]) -> list[dict]:
-    by_strategy: dict[str, list[dict]] = defaultdict(list)
+    by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in rows:
-        by_strategy[row["strategy"]].append(row)
+        model = str(row.get("model", "acm5"))
+        by_key[(model, row["strategy"])].append(row)
     agg: list[dict] = []
-    for strategy, group in by_strategy.items():
+    for (model, strategy), group in by_key.items():
         agg.append(
             {
+                "model": model,
                 "strategy": strategy,
                 "label": STRATEGY_LABELS.get(strategy, strategy),
+                "model_label": MODEL_LABELS.get(model, model),
                 "family": STRATEGY_FAMILY.get(strategy, strategy),
                 "n_targets": len(group),
                 "mean_weighted_error": statistics.mean(r["weighted_error"] for r in group),
                 "mean_fit_wall_s": statistics.mean(r["fit_wall_s"] for r in group),
             }
         )
-    return sorted(agg, key=lambda r: r["mean_weighted_error"])
+    return sorted(agg, key=lambda r: (r["model"], r["mean_weighted_error"]))
+
+
+def _strategy_order_from_agg(agg: list[dict]) -> list[str]:
+    """Stable strategy column order from mean error across models (prefer ACM-5)."""
+    preferred = [row for row in agg if row["model"] == "acm5"]
+    source = preferred if preferred else agg
+    seen: list[str] = []
+    for row in sorted(source, key=lambda r: r["mean_weighted_error"]):
+        if row["strategy"] not in seen:
+            seen.append(row["strategy"])
+    for row in agg:
+        if row["strategy"] not in seen:
+            seen.append(row["strategy"])
+    return seen
 
 
 def plot_strategy_mean_error(agg: list[dict], out: Path) -> None:
     ensure_rcparams()
-    labels = [row["label"] for row in agg]
-    values = [row["mean_weighted_error"] for row in agg]
+    # Prefer ACM-5 panel when multi-model; fall back to first model.
+    models = sorted({row["model"] for row in agg}, key=lambda m: PAPER_FIT_MODELS.index(m) if m in PAPER_FIT_MODELS else 99)
+    model = "acm5" if "acm5" in models else models[0]
+    subset = [row for row in agg if row["model"] == model]
+    labels = [row["label"] for row in subset]
+    values = [row["mean_weighted_error"] for row in subset]
     y_pos = np.arange(len(labels))
 
     fig_h = max(FIGSIZE_COLUMN_BAR[1], 0.34 * len(labels) + 1.2)
@@ -913,7 +984,7 @@ def plot_strategy_mean_error(agg: list[dict], out: Path) -> None:
     ax.invert_yaxis()
     set_axis_labels(
         ax,
-        title="Mean weighted DC error by search strategy",
+        title=f"Mean weighted DC error by search strategy ({MODEL_LABELS.get(model, model)})",
         xlabel="Mean weighted error",
     )
     apply_style(ax, grid_axis="x")
@@ -924,77 +995,114 @@ def plot_strategy_heatmap(rows: list[dict], agg: list[dict], out: Path) -> None:
     from matplotlib.colors import LogNorm
 
     ensure_rcparams()
-    strategy_order = [row["strategy"] for row in agg]
+    strategy_order = _strategy_order_from_agg(agg)
     targets = list(STRATEGY_TARGET_ORDER)
+    models = [
+        m
+        for m in PAPER_FIT_MODELS
+        if any(row.get("model") == m for row in rows)
+    ]
+    if not models:
+        models = sorted({str(row.get("model", "acm5")) for row in rows})
 
-    matrix = np.full((len(targets), len(strategy_order)), np.nan)
-    for i, target in enumerate(targets):
-        for j, strategy in enumerate(strategy_order):
-            for row in rows:
-                if row["target"] == target and row["strategy"] == strategy:
-                    matrix[i, j] = row["weighted_error"]
-                    break
-
-    valid = matrix[~np.isnan(matrix)]
-    if valid.size == 0:
-        raise ValueError("no strategy-benchmark data for heatmap")
-
+    n_models = len(models)
     fig_w = FIGSIZE_COLUMN_HEATMAP[0]
-    fig_h = max(FIGSIZE_COLUMN_HEATMAP[1], 0.22 * len(targets) + 1.4)
+    panel_h = max(1.35, 0.18 * len(targets) + 0.55)
+    fig_h = panel_h * n_models + 0.85
     fig = plt.figure(figsize=(fig_w, fig_h))
-    gs = fig.add_gridspec(1, 2, width_ratios=[24, 1], wspace=0.06, left=0.16, right=0.98, top=0.94, bottom=0.13)
-    ax = fig.add_subplot(gs[0, 0])
-    cax = fig.add_subplot(gs[0, 1])
+    gs = fig.add_gridspec(
+        n_models,
+        2,
+        width_ratios=[24, 1],
+        height_ratios=[1] * n_models,
+        wspace=0.06,
+        hspace=0.22,
+        left=0.18,
+        right=0.98,
+        top=0.96,
+        bottom=0.10,
+    )
+
+    all_vals = np.array(
+        [float(r["weighted_error"]) for r in rows if r["target"] in targets],
+        dtype=float,
+    )
+    if all_vals.size == 0:
+        raise ValueError("no strategy-benchmark data for heatmap")
+    norm = LogNorm(
+        vmin=max(float(all_vals.min()) * 0.9, 1e-3),
+        vmax=float(all_vals.max()) * 1.05,
+    )
     cmap = plt.matplotlib.colors.LinearSegmentedColormap.from_list(
         "devplot_blue",
         ["#f5f8ff", BAR_COLOR],
     )
     cmap.set_bad(color="#e6e6e6")
-    masked = np.ma.masked_invalid(matrix)
-    im = ax.imshow(
-        masked,
-        aspect="auto",
-        cmap=cmap,
-        norm=LogNorm(vmin=max(float(valid.min()) * 0.9, 1e-3), vmax=float(valid.max()) * 1.05),
-    )
-    for i in range(len(targets)):
-        for j in range(len(strategy_order)):
-            if np.isnan(matrix[i, j]):
-                ax.add_patch(
-                    plt.Rectangle(
-                        (j - 0.5, i - 0.5),
-                        1,
-                        1,
-                        facecolor="#e6e6e6",
-                        edgecolor="white",
-                        linewidth=0.6,
-                        hatch="///",
-                        zorder=2,
+
+    im = None
+    for mi, model in enumerate(models):
+        matrix = np.full((len(targets), len(strategy_order)), np.nan)
+        for i, target in enumerate(targets):
+            for j, strategy in enumerate(strategy_order):
+                for row in rows:
+                    if (
+                        row.get("model") == model
+                        and row["target"] == target
+                        and row["strategy"] == strategy
+                    ):
+                        matrix[i, j] = row["weighted_error"]
+                        break
+        ax = fig.add_subplot(gs[mi, 0])
+        masked = np.ma.masked_invalid(matrix)
+        im = ax.imshow(masked, aspect="auto", cmap=cmap, norm=norm)
+        for i in range(len(targets)):
+            for j in range(len(strategy_order)):
+                if np.isnan(matrix[i, j]):
+                    ax.add_patch(
+                        plt.Rectangle(
+                            (j - 0.5, i - 0.5),
+                            1,
+                            1,
+                            facecolor="#e6e6e6",
+                            edgecolor="white",
+                            linewidth=0.6,
+                            hatch="///",
+                            zorder=2,
+                        )
                     )
-                )
-    ax.set_xticks(np.arange(len(strategy_order)))
-    ax.set_xticklabels(
-        [STRATEGY_LABELS[s] for s in strategy_order],
-        rotation=40,
-        ha="right",
-        fontsize=TICK_SIZE,
-    )
-    ax.set_yticks(np.arange(len(targets)))
-    ax.set_yticklabels(
-        [STRATEGY_TARGET_LABELS.get(t, t) for t in targets],
-        fontsize=TICK_SIZE,
-    )
-    set_axis_labels(
-        ax,
-        title="Weighted DC error: fit target × search strategy",
-        xlabel="Search strategy",
-        ylabel="Fit target",
-    )
+        ax.set_yticks(np.arange(len(targets)))
+        ax.set_yticklabels(
+            [STRATEGY_TARGET_LABELS.get(t, t) for t in targets],
+            fontsize=max(TICK_SIZE - 1, 7),
+        )
+        if mi == n_models - 1:
+            ax.set_xticks(np.arange(len(strategy_order)))
+            ax.set_xticklabels(
+                [STRATEGY_LABELS[s] for s in strategy_order],
+                rotation=40,
+                ha="right",
+                fontsize=max(TICK_SIZE - 1, 7),
+            )
+        else:
+            ax.set_xticks([])
+        title = MODEL_LABELS.get(model, model)
+        if n_models == 1:
+            title = "Weighted DC error: fit target × search strategy"
+        set_axis_labels(
+            ax,
+            title=title,
+            xlabel="Search strategy" if mi == n_models - 1 else None,
+            ylabel="Fit target" if mi == n_models // 2 else None,
+        )
+        apply_style(ax, grid_axis=None)
+        ax.grid(False)
+
+    cax = fig.add_subplot(gs[0, 1])
     cbar = fig.colorbar(im, cax=cax)
     cbar.set_label("Weighted error", fontsize=CBAR_LABEL_SIZE)
     cbar.ax.tick_params(labelsize=TICK_SIZE)
-    apply_style(ax, grid_axis=None)
-    ax.grid(False)
+    for mi in range(1, n_models):
+        fig.add_subplot(gs[mi, 1]).axis("off")
     _write_figure(fig, out, layout="none")
 
 
@@ -1013,37 +1121,91 @@ def _runtime_time_axis(xmax_raw: float) -> tuple[float, list[int]]:
 
 
 def plot_strategy_runtime_tradeoff(agg: list[dict], out: Path) -> None:
+    from matplotlib.lines import Line2D
+
     ensure_rcparams()
     fig, ax = plt.subplots(figsize=FIGSIZE_COLUMN_RUNTIME)
-    families = sorted({row["family"] for row in agg}, key=lambda f: list(STRATEGY_FAMILY_COLORS).index(f))
-    for family in families:
-        group = [row for row in agg if row["family"] == family]
-        ax.scatter(
-            [row["mean_fit_wall_s"] for row in group],
-            [row["mean_weighted_error"] for row in group],
-            s=SCATTER_SIZE_LARGE,
-            color=STRATEGY_FAMILY_COLORS[family],
-            edgecolors="white",
-            linewidths=1.5,
-            label=family,
-            zorder=3,
-        )
-        for row in group:
-            dx, dy, ha, va = _runtime_annotation_offset(row)
-            ax.annotate(
-                row["label"],
-                (row["mean_fit_wall_s"], row["mean_weighted_error"]),
-                textcoords="offset points",
-                xytext=(dx, dy),
-                fontsize=ANNOT_SIZE,
-                color=COLOR_REFERENCE,
-                ha=ha,
-                va=va,
-                clip_on=False,
+    models = [
+        m
+        for m in PAPER_FIT_MODELS
+        if any(row.get("model") == m for row in agg)
+    ]
+    if not models:
+        models = sorted({str(row.get("model", "acm5")) for row in agg})
+
+    xmax_raw = max(float(row["mean_fit_wall_s"]) for row in agg)
+    xmax, xticks = _runtime_time_axis(xmax_raw)
+    ymax = max(row["mean_weighted_error"] for row in agg) * 1.08
+
+    for model in models:
+        for row in agg:
+            if row.get("model") != model:
+                continue
+            ax.scatter(
+                row["mean_fit_wall_s"],
+                row["mean_weighted_error"],
+                s=SCATTER_SIZE_LARGE * 0.55,
+                color=STRATEGY_FAMILY_COLORS.get(row["family"], COLOR_REFERENCE),
+                marker=MODEL_MARKERS.get(model, "o"),
+                edgecolors="white",
+                linewidths=0.8,
+                zorder=3,
             )
 
-    xmax, xticks = _runtime_time_axis(max(row["mean_fit_wall_s"] for row in agg))
-    ymax = max(row["mean_weighted_error"] for row in agg) * 1.08
+    model_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=MODEL_MARKERS[m],
+            color="none",
+            markerfacecolor=COLOR_REFERENCE,
+            markeredgecolor=COLOR_REFERENCE,
+            markersize=7,
+            label=MODEL_LABELS.get(m, m),
+        )
+        for m in models
+    ]
+    family_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=STRATEGY_FAMILY_COLORS[fam],
+            markeredgecolor="white",
+            markersize=7,
+            label=fam,
+        )
+        for fam in STRATEGY_FAMILY_COLORS
+        if any(row["family"] == fam for row in agg)
+    ]
+    ax.legend(
+        handles=model_handles + family_handles,
+        fontsize=LEGEND_SIZE - 1,
+        loc="upper right",
+        framealpha=0.92,
+        markerscale=0.9,
+        borderpad=0.4,
+        labelspacing=0.35,
+    )
+
+    annotate_rows = [row for row in agg if row.get("model") == "acm5"]
+    if not annotate_rows:
+        annotate_rows = agg
+    for row in annotate_rows:
+        dx, dy, ha, va = _runtime_annotation_offset(row)
+        ax.annotate(
+            row["label"],
+            (row["mean_fit_wall_s"], row["mean_weighted_error"]),
+            textcoords="offset points",
+            xytext=(dx, dy),
+            fontsize=ANNOT_SIZE - 1,
+            color=COLOR_REFERENCE,
+            ha=ha,
+            va=va,
+            clip_on=False,
+        )
+
     ax.set_xlim(0, xmax)
     ax.set_xticks(xticks)
     ax.set_ylim(0, ymax)
@@ -1054,14 +1216,6 @@ def plot_strategy_runtime_tradeoff(agg: list[dict], out: Path) -> None:
         ylabel="Mean weighted error",
     )
     apply_style(ax)
-    ax.legend(
-        fontsize=LEGEND_SIZE,
-        loc="upper right",
-        framealpha=0.92,
-        markerscale=0.6,
-        borderpad=0.5,
-        labelspacing=0.4,
-    )
     fig.subplots_adjust(left=0.14, right=0.98, top=0.90, bottom=0.15)
     _write_figure(fig, out, layout="none")
 

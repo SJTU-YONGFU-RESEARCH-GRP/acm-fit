@@ -213,42 +213,41 @@ def capture_golden_iv(
 
     curves: list[GoldenCurve] = []
     polarity = target.polarity
+    vdd = float(target.vdd)
     for frac in vds_fractions:
-        vds_abs = float(frac) * target.vdd
+        vds_abs = float(frac) * vdd
         if polarity == "nmos":
-            vds = vds_abs
-            vg_start_eff = float(vg_start)
-            vg_stop = target.vdd
-            vg_step_eff = float(vg_step)
-            bias = f"""VG1 g1 0 DC {vg_start_eff}
+            vg_gate_start = float(vg_start)
+            vg_gate_stop = vdd
+            vg_gate_step = float(vg_step)
+            bias = f"""VG1 g1 0 DC {vg_gate_start}
 VS1 s1 0 DC 0
 VB1 b1 0 DC 0
-VD1 d1 0 DC {vds}"""
+VD1 d1 0 DC {vds_abs}"""
         else:
-            vds = vds_abs
-            vg_start_eff = float(vg_start)
-            vg_stop = -target.vdd
-            vg_step_eff = -abs(float(vg_step))
-            bias = f"""VDD vdd 0 DC {target.vdd}
-VG1 g1 0 DC {vg_start_eff}
-VS1 s1 vdd 0 DC 0
-VB1 b1 vdd 0 DC 0
-VD1 d1 0 DC {target.vdd - vds}"""
+            # Source/bulk at VDD; gate sweeps VDD→0 so |Vgs| covers 0→VDD.
+            # Storing negative gate or 0→−VDD keeps the device in strong
+            # inversion for the whole sweep and breaks VT0 extraction.
+            vg_gate_start = vdd
+            vg_gate_stop = 0.0
+            vg_gate_step = -abs(float(vg_step))
+            bias = f"""VDD vdd 0 DC {vdd}
+VG1 g1 0 DC {vg_gate_start}
+VS1 s1 vdd DC 0
+VB1 b1 vdd DC 0
+VD1 d1 0 DC {vdd - vds_abs}"""
         tag = f"idvg_vds_{vds_abs:.4g}".replace(".", "p")
         if polarity == "pmos":
             tag = f"pmos_{tag}"
         out_txt = (output_dir / f"{tag}.txt").resolve()
         netlist = output_dir / f"{tag}.spice"
-        section = target.ngspice_section
-        if polarity == "pmos" and "VDD vdd" not in bias:
-            section = f"{section}\nVDD vdd 0 DC {target.vdd}"
         netlist.write_text(
             f"""* golden I-V {target.name} polarity={polarity} |VDS|={vds_abs}
-{section}
+{target.ngspice_section}
 {bias}
 {target.ref_device}
 .control
-dc VG1 {vg_start_eff} {vg_stop} {vg_step_eff}
+dc VG1 {vg_gate_start} {vg_gate_stop} {vg_gate_step}
 wrdata {out_txt} abs(i(VS1))
 .endc
 .end
@@ -256,8 +255,14 @@ wrdata {out_txt} abs(i(VS1))
         )
         _run_ngspice(netlist, cwd=output_dir)
         raw = np.loadtxt(out_txt)
-        vg = raw[:, 0]
+        vg_gate = raw[:, 0]
         id_ref = raw[:, 1]
+        # Store |Vgs| on the same 0→VDD axis used for NMOS / ACM magnitude fit.
+        if polarity == "pmos":
+            vg = vdd - vg_gate
+        else:
+            vg = vg_gate
+        _assert_idvg_covers_threshold(vg, id_ref, polarity=polarity, vdd=vdd)
         csv_path = output_dir / f"{tag}.csv"
         with csv_path.open("w") as fh:
             fh.write("vg,id_ref\n")
@@ -299,6 +304,34 @@ wrdata {out_txt} abs(i(VS1))
     )
 
 
+def _assert_idvg_covers_threshold(
+    vg: np.ndarray,
+    id_ref: np.ndarray,
+    *,
+    polarity: str,
+    vdd: float,
+) -> None:
+    """Fail fast if an Id–Vg sweep never leaves strong inversion / cutoff."""
+    if vg.size < 3:
+        raise ValueError(f"{polarity} Id-Vg has too few points ({vg.size})")
+    order = np.argsort(vg)
+    vg_s = np.asarray(vg, dtype=float)[order]
+    id_s = np.abs(np.asarray(id_ref, dtype=float)[order])
+    if float(vg_s[0]) < -1.0e-9 or float(vg_s[-1]) > float(vdd) + 1.0e-6:
+        raise ValueError(
+            f"{polarity} |Vgs| axis must span ~[0, VDD]; "
+            f"got [{vg_s[0]:.4g}, {vg_s[-1]:.4g}] with VDD={vdd:.4g}"
+        )
+    id_lo = float(id_s[0])
+    id_hi = float(id_s[-1])
+    if not (id_hi > 10.0 * max(id_lo, 1.0e-18)):
+        raise ValueError(
+            f"{polarity} Id-Vg does not cover threshold: "
+            f"|Id|(|Vgs|≈0)={id_lo:.4e}, |Id|(|Vgs|≈VDD)={id_hi:.4e} "
+            "(expected on-current ≫ off-current; check PMOS gate bias)"
+        )
+
+
 def validate_golden_device(device_dir: Path) -> GoldenDevice:
     """Load and validate one golden device directory (raises on schema errors)."""
     return load_golden_device(device_dir)
@@ -311,6 +344,7 @@ def load_golden_device(device_dir: Path) -> GoldenDevice:
         raise FileNotFoundError(f"missing {meta_path}")
     meta = json.loads(meta_path.read_text())
     polarity = str(meta.get("polarity", "nmos"))
+    vdd = float(meta["vdd"])
     curves: list[GoldenCurve] = []
     for vds in meta["vds_list"]:
         tag = f"idvg_vds_{float(vds):.4g}".replace(".", "p")
@@ -320,12 +354,13 @@ def load_golden_device(device_dir: Path) -> GoldenDevice:
         if not csv_path.is_file():
             raise FileNotFoundError(csv_path)
         raw = np.loadtxt(csv_path, delimiter=",", skiprows=1)
-        curves.append(
-            GoldenCurve(vds=float(vds), vg=raw[:, 0], id_ref=raw[:, 1])
-        )
+        vg = raw[:, 0]
+        id_ref = raw[:, 1]
+        _assert_idvg_covers_threshold(vg, id_ref, polarity=polarity, vdd=vdd)
+        curves.append(GoldenCurve(vds=float(vds), vg=vg, id_ref=id_ref))
     return GoldenDevice(
         pdk=str(meta["pdk"]),
-        vdd=float(meta["vdd"]),
+        vdd=vdd,
         width_m=float(meta["width_m"]),
         length_m=float(meta["length_m"]),
         curves=tuple(curves),

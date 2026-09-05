@@ -17,7 +17,8 @@ DC_FIT_PARAMS: frozenset[str] = frozenset({"VT0", "IS", "n", "sigma", "zeta"})
 
 # Search bounds for VA instance parameters (DC fit + fixed non-DC defaults).
 PARAM_BOUNDS: dict[str, tuple[float, float]] = {
-    "VT0": (0.4, 1.0),
+    # Upper bound >1 V: open-PDK PMOS |Vth| often exceeds 1 V (e.g. sky130 ~1.03).
+    "VT0": (0.2, 1.5),
     "IS": (1e-8, 3e-5),
     "n": (1.0, 3.0),
     "sigma": (0.0, 0.08),

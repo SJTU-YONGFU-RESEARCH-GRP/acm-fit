@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Launch one fit-benchmark worker per remaining target (does not stop existing runs).
+# Launch one fit-benchmark worker per remaining (lane, model, target).
 #
 # Skips targets that are already complete or partially checkpointed (another worker
 # owns them). Use after the main lane job is running, to fan out wave-3 / idle targets.
 #
-#   STRATEGY_JOBS=3 bash scripts/run_fit_benchmark_remaining.sh commercial ptm
+#   STRATEGY_JOBS=3 FIT_MODELS=acm4,acm5,qlaw_gm_j14 \
+#     bash scripts/run_fit_benchmark_remaining.sh commercial ptm custom
 #   bash scripts/run_fit_benchmark_remaining.sh commercial --dry-run
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STRATEGY_JOBS="${STRATEGY_JOBS:-3}"
+FIT_MODELS="${FIT_MODELS:-acm4,acm5,qlaw_gm_j14}"
 DRY_RUN=0
 LANES=()
 
@@ -18,8 +20,9 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --strategy-jobs) STRATEGY_JOBS="$2"; shift 2 ;;
+        --fit-models|--models) FIT_MODELS="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,8p' "$0"
+            sed -n '2,10p' "$0"
             exit 0
             ;;
         *) LANES+=("$1"); shift ;;
@@ -27,7 +30,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#LANES[@]} -eq 0 ]]; then
-    LANES=(commercial ptm)
+    LANES=(commercial ptm custom)
 fi
 
 # shellcheck disable=SC1091
@@ -41,24 +44,28 @@ STRATEGIES="optuna,optuna_cmaes,optuna_gp,optuna_qmc,optuna_random,differential_
 spawned=0
 while IFS= read -r line; do
     lane="${line%%:*}"
-    target="${line#*:}"
-    log="${RELEASE_ROOT}/results/${lane}/fit_benchmark_${target}.log"
+    rest="${line#*:}"
+    model="${rest%%:*}"
+    target="${rest#*:}"
+    log="${RELEASE_ROOT}/results/${lane}/fit_benchmark_${model}_${target}.log"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "would spawn lane=${lane} target=${target} strategy_jobs=${STRATEGY_JOBS} log=${log}"
+        echo "would spawn lane=${lane} model=${model} target=${target} strategy_jobs=${STRATEGY_JOBS} log=${log}"
         spawned=$((spawned + 1))
         continue
     fi
-    echo "spawning lane=${lane} target=${target} strategy_jobs=${STRATEGY_JOBS} -> ${log}"
-    nohup env STRATEGY_JOBS="${STRATEGY_JOBS}" bash "${SCRIPT_DIR}/run_fit_benchmark.sh" \
+    echo "spawning lane=${lane} model=${model} target=${target} strategy_jobs=${STRATEGY_JOBS} -> ${log}"
+    nohup env STRATEGY_JOBS="${STRATEGY_JOBS}" FIT_MODELS="${model}" bash "${SCRIPT_DIR}/run_fit_benchmark.sh" \
         "${lane}" \
         --results-dir "${lane}" \
         --strategy-jobs "${STRATEGY_JOBS}" \
+        --fit-models "${model}" \
         --targets "${target}" \
         >> "${log}" 2>&1 &
     echo "  pid=$!"
     spawned=$((spawned + 1))
 done < <(
-    PYTHONPATH=src python3 - "${LANES[@]}" <<'PY'
+    FIT_MODELS="${FIT_MODELS}" PYTHONPATH=src python3 - "${LANES[@]}" <<'PY'
+import os
 import sys
 from pathlib import Path
 
@@ -77,6 +84,9 @@ STRATEGIES = tuple(
     if s.strip()
 )
 N = len(STRATEGIES)
+MODELS = tuple(
+    s.strip() for s in os.environ.get("FIT_MODELS", "acm5").split(",") if s.strip()
+)
 
 
 def checkpoint_count(work_dir: Path) -> int:
@@ -96,9 +106,7 @@ for lane in sys.argv[1:]:
         raise SystemExit(f"missing config for lane {lane!r}: {cfg_path}")
     cfg = load_golden_config(cfg_path, ROOT)
     fit_engine = fit_engine_from_mapping(cfg.get("fit_engine"))
-    bench_dir = ROOT / "results" / lane / "fit_benchmark" / "acm5"
     golden_dir = ROOT / "results" / lane / "golden"
-    work_root = ROOT / "results" / lane / "acm5" / "fit" / "_work"
     target_names = tuple(sorted(cfg["_targets"]))
     waves = fit_job_waves(
         target_names,
@@ -106,37 +114,43 @@ for lane in sys.argv[1:]:
         warm_start=fit_engine.warm_start,
         load_golden_device=load_golden_device,
     )
-    in_progress = {
-        name
-        for name in target_names
-        if 0 < checkpoint_count(work_root / name) < N
-    }
-    blocked: set[str] = set()
-    if fit_engine.warm_start is not None:
-        for wave in waves:
-            active = [name for name in wave if name in in_progress]
-            if not active:
-                continue
-            for name in wave:
-                if benchmark_target_complete(bench_dir, name, STRATEGIES):
+    for model in MODELS:
+        bench_dir = ROOT / "results" / lane / "fit_benchmark" / model
+        work_root = ROOT / "results" / lane / model / "fit" / "_work"
+        in_progress = {
+            name
+            for name in target_names
+            if 0 < checkpoint_count(work_root / name) < N
+        }
+        blocked: set[str] = set()
+        if fit_engine.warm_start is not None:
+            for wave in waves:
+                active = [name for name in wave if name in in_progress]
+                if not active:
                     continue
-                if checkpoint_count(work_root / name) == 0:
-                    blocked.add(name)
-                    print(
-                        f"skip {lane}:{name} reserved_for_lane_worker "
-                        f"(wave with {','.join(active)})",
-                        file=sys.stderr,
-                    )
-    for name in target_names:
-        if benchmark_target_complete(bench_dir, name, STRATEGIES):
-            continue
-        if name in blocked:
-            continue
-        done = checkpoint_count(work_root / name)
-        if done > 0:
-            print(f"skip {lane}:{name} in_progress={done}/{N}", file=sys.stderr)
-            continue
-        print(f"{lane}:{name}")
+                for name in wave:
+                    if benchmark_target_complete(bench_dir, name, STRATEGIES):
+                        continue
+                    if checkpoint_count(work_root / name) == 0:
+                        blocked.add(name)
+                        print(
+                            f"skip {lane}:{model}:{name} reserved_for_lane_worker "
+                            f"(wave with {','.join(active)})",
+                            file=sys.stderr,
+                        )
+        for name in target_names:
+            if benchmark_target_complete(bench_dir, name, STRATEGIES):
+                continue
+            if name in blocked:
+                continue
+            done = checkpoint_count(work_root / name)
+            if done > 0:
+                print(
+                    f"skip {lane}:{model}:{name} in_progress={done}/{N}",
+                    file=sys.stderr,
+                )
+                continue
+            print(f"{lane}:{model}:{name}")
 PY
 )
 

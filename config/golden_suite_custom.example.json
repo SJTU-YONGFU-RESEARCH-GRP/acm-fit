@@ -22,9 +22,9 @@
     "ngspice"
   ],
   "fit_loss": {
-    "id_mode": "absolute",
-    "weight_linear": 0.4,
-    "weight_log": 0.6,
+    "id_mode": "relative",
+    "weight_linear": 0.75,
+    "weight_log": 0.25,
     "huber_delta": 0.0001,
     "region_vt_width_v": 0.0,
     "region_vt_boost": 2.0,
@@ -37,14 +37,22 @@
     "refine_maxiter": 15
   },
   "fit_engine": {
-    "strategy": "staged_optuna",
-    "strategies": ["optuna", "staged", "staged_optuna"],
+    "strategy": "optuna",
+    "strategies": [
+      "optuna",
+      "staged",
+      "staged_optuna"
+    ],
     "fit_profile": "acm5_staged",
     "optuna_box_fraction": 0.2,
     "warm_start": {
       "mode": "parent_corner",
       "corner_order": {
-        "sky130": ["tt", "ss", "ff"]
+        "sky130": [
+          "tt",
+          "ss",
+          "ff"
+        ]
       }
     }
   },

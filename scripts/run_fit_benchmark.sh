@@ -18,6 +18,7 @@ ITERATIONS="500"
 JOBS="${JOBS:-48}"
 STRATEGY_JOBS="${STRATEGY_JOBS:-1}"
 RESULTS_SUBDIR=""
+FIT_MODELS="${FIT_MODELS:-acm4,acm5,qlaw_gm_j14}"
 EXTRA=()
 
 while [[ $# -gt 0 ]]; do
@@ -27,6 +28,7 @@ while [[ $# -gt 0 ]]; do
         --jobs) JOBS="$2"; shift 2 ;;
         --strategy-jobs) STRATEGY_JOBS="$2"; shift 2 ;;
         --results-dir) RESULTS_SUBDIR="$2"; shift 2 ;;
+        --fit-models|--models) FIT_MODELS="$2"; shift 2 ;;
         --targets) EXTRA+=("$1" "$2"); shift 2 ;;
         *) EXTRA+=("$1"); shift ;;
     esac
@@ -63,13 +65,14 @@ source "${SCRIPT_DIR}/_acm_env.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/load_pdk_env.sh"
 
-echo "Strategy benchmark: lane=${LANE} results=${RESULTS_DIR} iterations=${ITERATIONS} jobs=${JOBS} ${STRATEGY_JOBS:+strategy_jobs=${STRATEGY_JOBS}}"
+echo "Strategy benchmark: lane=${LANE} results=${RESULTS_DIR} models=${FIT_MODELS} iterations=${ITERATIONS} jobs=${JOBS} ${STRATEGY_JOBS:+strategy_jobs=${STRATEGY_JOBS}}"
 cd "${RELEASE_ROOT}"
 PYTHONPATH=src python3 -m acm.cli.pipeline \
     --config "${CONFIG}" \
     --results-dir "${RESULTS_DIR}" \
     --skip-golden \
     --skip-predict \
+    --fit-models "${FIT_MODELS}" \
     --fit-benchmark "${STRATEGIES}" \
     --iterations "${ITERATIONS}" \
     --jobs "${JOBS}" \

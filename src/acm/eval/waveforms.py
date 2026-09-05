@@ -32,10 +32,16 @@ def load_xy_csv(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 def wrdata_to_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Load ngspice ``wrdata`` (2+ columns) as ``(x, y)`` using col0/col1."""
+    """Load ngspice ``wrdata`` (2+ columns) as ``(x, y)``.
+
+    For multi-signal exports ngspice repeats the sweep variable in early
+    columns; use column 0 for x and the last column for y.
+    """
     raw = np.loadtxt(path)
     if raw.ndim != 2 or raw.shape[1] < 2 or raw.shape[0] < 2:
         raise ValueError(f"expected wrdata matrix in {path}, got {raw.shape}")
+    if raw.shape[1] >= 3:
+        return raw[:, 0], raw[:, -1]
     return raw[:, 0], raw[:, 1]
 
 

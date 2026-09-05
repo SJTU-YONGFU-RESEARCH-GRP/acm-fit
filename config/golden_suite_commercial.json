@@ -3,15 +3,29 @@
   "description": "Foundry open-PDK BSIM Id-Vg goldens with typical and corner process points.",
   "vg_start": 0.0,
   "vg_step": 0.05,
-  "vds_fractions": [0.05, 0.5, 1.0],
-  "fit_models": ["acm5"],
-  "predict_analyses": ["dc", "ac", "noise", "transient", "temp"],
-  "predict_simulators": ["ngspice"],
+  "vds_fractions": [
+    0.05,
+    0.5,
+    1.0
+  ],
+  "fit_models": [
+    "acm5"
+  ],
+  "predict_analyses": [
+    "dc",
+    "ac",
+    "noise",
+    "transient",
+    "temp"
+  ],
+  "predict_simulators": [
+    "ngspice"
+  ],
   "fit_loss": {
-    "id_mode": "absolute",
-    "weight_linear": 0.4,
-    "weight_log": 0.6,
-    "huber_delta": 1.0e-4,
+    "id_mode": "relative",
+    "weight_linear": 0.75,
+    "weight_log": 0.25,
+    "huber_delta": 0.0001,
     "region_vt_width_v": 0.0,
     "region_vt_boost": 2.0,
     "weight_dc": 1.0,
@@ -23,30 +37,42 @@
     "refine_maxiter": 15
   },
   "fit_engine": {
-    "strategy": "staged_optuna",
-    "strategies": ["optuna", "staged", "staged_optuna"],
+    "strategy": "optuna",
+    "strategies": [
+      "optuna",
+      "staged",
+      "staged_optuna"
+    ],
     "fit_profile": "acm5_staged",
     "optuna_box_fraction": 0.2,
     "warm_start": {
       "mode": "parent_corner",
       "corner_order": {
-        "sky130": ["tt", "ss", "ff"],
-        "gf180mcu": ["typical", "ss", "ff"]
+        "sky130": [
+          "tt",
+          "ss",
+          "ff"
+        ],
+        "gf180mcu": [
+          "typical",
+          "ss",
+          "ff"
+        ]
       }
     }
   },
   "analysis_defaults": {
     "ac": {
       "vgs": 0.9,
-      "f_start": 1.0e3,
-      "f_stop": 1.0e9,
+      "f_start": 1000.0,
+      "f_stop": 1000000000.0,
       "points_per_decade": 10,
       "rd_ohm": 1000.0
     },
     "noise": {
       "vgs": 0.9,
-      "f_start": 1.0e3,
-      "f_stop": 1.0e9,
+      "f_start": 1000.0,
+      "f_stop": 1000000000.0,
       "points_per_decade": 10,
       "rd_ohm": 1000.0
     }
@@ -54,8 +80,8 @@
   "targets": {
     "sky130": {
       "vdd": 1.8,
-      "width_m": 3.0e-6,
-      "length_m": 2.5e-7,
+      "width_m": 3e-06,
+      "length_m": 2.5e-07,
       "ref_device": "xm1 d1 g1 s1 b1 sky130_fd_pr__nfet_01v8 l=0.25 w=3",
       "corners": {
         "tt": {
@@ -71,8 +97,8 @@
     },
     "gf180mcu": {
       "vdd": 3.3,
-      "width_m": 5.0e-6,
-      "length_m": 3.0e-7,
+      "width_m": 5e-06,
+      "length_m": 3e-07,
       "ref_device": "X1 d1 g1 s1 b1 nfet_03v3 w=5u l=0.3u",
       "corners": {
         "typical": {

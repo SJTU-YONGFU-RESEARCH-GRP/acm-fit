@@ -70,7 +70,7 @@ class WarmStartPolicy:
 class FitEnginePolicy:
     """Search strategy and staged-fit options (orthogonal to ``LossPolicy``)."""
 
-    strategy: str = "staged_optuna"
+    strategy: str = "optuna"
     strategies: tuple[str, ...] = (
         "optuna",
         "optuna_cmaes",
@@ -123,7 +123,7 @@ def fit_engine_from_mapping(
     """Parse ``fit_engine`` block from a golden-suite JSON config."""
     if raw is None:
         return FitEnginePolicy()
-    strategy = str(raw.get("strategy", "staged_optuna"))
+    strategy = str(raw.get("strategy", "optuna"))
     strategies_raw = raw.get("strategies")
     if strategies_raw is None:
         strategies = FitEnginePolicy().strategies

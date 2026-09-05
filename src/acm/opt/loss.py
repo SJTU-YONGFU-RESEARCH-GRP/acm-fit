@@ -33,9 +33,9 @@ class LossPolicy:
         refine_maxiter: Max iterations per L-BFGS-B start.
     """
 
-    id_mode: str = "absolute"
-    weight_linear: float = 0.4
-    weight_log: float = 0.6
+    id_mode: str = "relative"
+    weight_linear: float = 0.75
+    weight_log: float = 0.25
     huber_delta: float = 1.0e-4
     region_vt_width_v: float = 0.0
     region_vt_boost: float = 2.0
@@ -227,9 +227,9 @@ def composite_objective(
 # Named ablation presets (data-driven; selected by name in scripts).
 ABLATION_PRESETS: dict[str, LossPolicy] = {
     "baseline": LossPolicy(
-        id_mode="absolute",
-        weight_linear=0.4,
-        weight_log=0.6,
+        id_mode="relative",
+        weight_linear=0.75,
+        weight_log=0.25,
         weight_dc=1.0,
         weight_ac=0.0,
         weight_noise=0.0,
@@ -250,8 +250,8 @@ ABLATION_PRESETS: dict[str, LossPolicy] = {
     ),
     "lin_heavy": LossPolicy(
         id_mode="absolute",
-        weight_linear=0.7,
-        weight_log=0.3,
+        weight_linear=0.9,
+        weight_log=0.1,
         weight_dc=1.0,
         weight_ac=0.0,
         weight_noise=0.0,
@@ -271,9 +271,9 @@ ABLATION_PRESETS: dict[str, LossPolicy] = {
         refine_maxiter=12,
     ),
     "region_vt": LossPolicy(
-        id_mode="absolute",
-        weight_linear=0.4,
-        weight_log=0.6,
+        id_mode="relative",
+        weight_linear=0.75,
+        weight_log=0.25,
         region_vt_width_v=0.15,
         region_vt_boost=3.0,
         weight_dc=1.0,
@@ -296,9 +296,9 @@ ABLATION_PRESETS: dict[str, LossPolicy] = {
         refine_maxiter=12,
     ),
     "multi_obj": LossPolicy(
-        id_mode="absolute",
-        weight_linear=0.4,
-        weight_log=0.6,
+        id_mode="relative",
+        weight_linear=0.75,
+        weight_log=0.25,
         weight_dc=1.0,
         weight_ac=0.0,
         weight_noise=0.0,
