@@ -15,6 +15,7 @@ with no foundry netlist.
 
 - **Repository:** [SJTU-YONGFU-RESEARCH-GRP/acm-fit](https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm-fit)
 - **Package name:** `acm-fit` (release tag `v0.1.0-lascas-2026`)
+- **Related models:** [acm4](https://github.com/SJTU-YONGFU-RESEARCH-GRP/acm4), [qlaw](https://github.com/SJTU-YONGFU-RESEARCH-GRP/qlaw), [qlaw-discovery](https://github.com/SJTU-YONGFU-RESEARCH-GRP/qlaw-discovery)
 - **Upstream PTM models:** [spice_model_collections](https://github.com/SJTU-YONGFU-RESEARCH-GRP/spice_model_collections) (git submodule)
 - **Commercial PDKs:** sky130 and GF180MCU (install locally; not redistributed)
 - **Entry points:** `scripts/run_all.sh` (all lanes + BYOD), `scripts/run_golden_pipeline.sh`, `scripts/run_eval_suite.sh`

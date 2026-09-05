@@ -106,6 +106,17 @@ def load_fit_profile(repo_root: Path, profile_id: str) -> FitProfile:
     )
 
 
+def list_fit_profiles(repo_root: Path) -> tuple[FitProfile, ...]:
+    """Load every profile under ``config/fit_profiles/*.json``."""
+    root = repo_root / "config/fit_profiles"
+    if not root.is_dir():
+        raise FileNotFoundError(f"missing fit profile directory: {root}")
+    out: list[FitProfile] = []
+    for path in sorted(root.glob("*.json")):
+        out.append(load_fit_profile(repo_root, path.stem))
+    return tuple(out)
+
+
 def resolve_fit_profile(
     repo_root: Path,
     *,
@@ -113,14 +124,34 @@ def resolve_fit_profile(
     model_tier: str,
     free_params: tuple[str, ...],
 ) -> FitProfile:
-    """Load a profile and verify it applies to ``model_tier``."""
+    """Load a profile that applies to ``model_tier``.
+
+    If ``profile_id`` does not list ``model_tier``, discover the unique profile
+    under ``config/fit_profiles`` whose ``model_tiers`` includes it (so commercial
+    suites can keep a default ``acm5_staged`` while benchmarking acm4/qlaw).
+    """
     profile = load_fit_profile(repo_root, profile_id)
-    if model_tier not in profile.model_tiers:
+    if model_tier in profile.model_tiers:
+        return profile
+    matches = [
+        candidate
+        for candidate in list_fit_profiles(repo_root)
+        if model_tier in candidate.model_tiers
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
         raise ValueError(
             f"fit profile {profile_id!r} does not apply to model tier "
-            f"{model_tier!r}; model_tiers={profile.model_tiers!r}"
+            f"{model_tier!r}; model_tiers={profile.model_tiers!r}; "
+            f"no alternate profile covers this tier"
         )
-    return profile
+    ids = ", ".join(repr(m.profile_id) for m in matches)
+    raise ValueError(
+        f"fit profile {profile_id!r} does not apply to model tier "
+        f"{model_tier!r}; model_tiers={profile.model_tiers!r}; "
+        f"ambiguous alternates: {ids}"
+    )
 
 
 __all__ = [
@@ -128,5 +159,6 @@ __all__ = [
     "FitProfile",
     "SUPPORTED_CURVE_SELECTORS",
     "load_fit_profile",
+    "list_fit_profiles",
     "resolve_fit_profile",
 ]
